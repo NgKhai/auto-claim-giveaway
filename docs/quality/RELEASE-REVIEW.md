@@ -31,7 +31,7 @@ An earlier wording claimed final frontend display fixes had been rerun before ch
 
 - All opportunities are explicit synthetic fixtures. There is no verified real-provider discovery, extraction, semantic search/LLM workflow or actual reward.
 - Submission creates a local sandbox receipt only. No external form/browser adapter or provider authorization has been validated. CAPTCHA/OTP/DOM drift and ambiguous external submission recovery are unrun and remain unavailable.
-- Continuous monitoring, real email/Discord notification delivery, profile deletion/retention and general scoped automation permissions remain incomplete.
+- Continuous monitoring, real email/Discord notification delivery, configured retention and general scoped automation permissions remain incomplete. Owner-only export and logical account deletion were accepted separately in PRIVACY-REVIEW.md; that does not establish backup/forensic erasure.
 - Browser smoke exercises one happy path and one mobile size, not accessibility certification or a cross-browser/device suite.
 - Security review is focused local code/API review, not penetration testing. Internet-facing auth verification, distributed abuse controls, body-size limits, operational account lifecycle and production hosting hardening remain separate gates.
 - No realistic load/performance benchmark, production deploy, production migration/rollback, backup restore, or monitoring alert delivery was verified in this QA pass.

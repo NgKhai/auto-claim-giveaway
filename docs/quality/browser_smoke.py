@@ -2,6 +2,7 @@
 Requires Playwright and system Chromium; uses a temporary database/server.
 """
 import os
+import json
 from pathlib import Path
 import socket
 import subprocess
@@ -77,9 +78,47 @@ with tempfile.TemporaryDirectory() as tmp:
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Mobile horizontal overflow'
             page.locator('#logout').click()
             expect(page.locator('#auth-view')).to_be_visible()
+            page.locator('#email').fill('browser@example.test')
+            page.locator('#password').fill('BrowserTestPassword123!')
+            page.locator('#auth-submit').click()
+            expect(page.locator('#workspace-view')).to_be_visible()
+            page.locator('#account-settings').click()
+            with page.expect_download() as downloaded:
+                page.locator('#export-account').click()
+            download = downloaded.value
+            assert download.suggested_filename == 'opportunity-hunter-export.json'
+            export_path = Path(tmp) / 'account-export.json'
+            download.save_as(export_path)
+            exported = json.loads(export_path.read_text())
+            assert exported['profile']['email'] == 'browser@example.test'
+            assert len(exported['applications']) == 1
+            for secret_key in ['password', 'password_hash', 'csrf_token', 'approval_hash']:
+                assert f'"{secret_key}"' not in json.dumps(exported), f'Export leaked {secret_key}'
+            page.locator('#begin-delete-account').click()
+            page.locator('#delete-password').fill('DoNotSubmitThisPassword')
+            page.locator('#cancel-delete-account').click()
+            expect(page.locator('#account-dialog')).to_be_visible()
+            assert page.request.get(origin + '/api/me').status == 200
+            page.locator('#begin-delete-account').click()
+            expect(page.locator('#delete-password')).to_have_value('')
+            page.locator('#delete-password').fill('wrong-password')
+            page.locator('#confirm-delete-account').click()
+            expect(page.locator('#delete-error')).not_to_be_empty()
+            expect(page.locator('#delete-account-dialog')).to_be_visible()
+            expect(page.locator('#workspace-view')).to_be_visible()
+            assert page.request.get(origin + '/api/me').status == 200
+            page.locator('#delete-password').fill('BrowserTestPassword123!')
+            page.locator('#confirm-delete-account').click()
+            expect(page.locator('#auth-view')).to_be_visible()
+            page.locator('#email').fill('browser@example.test')
+            page.locator('#password').fill('BrowserTestPassword123!')
+            with page.expect_response(lambda response: '/api/auth/login' in response.url) as failed_login:
+                page.locator('#auth-submit').click()
+            assert failed_login.value.status == 401
+            expect(page.locator('#auth-view')).to_be_visible()
             assert not errors, errors
             browser.close()
-        print('PASS browser signup → goal → approval destination/action → sandbox receipt → reload → audit year → mobile layout → logout; no JS errors')
+        print('PASS browser signup → goal → approval destination/action → sandbox receipt → reload → audit year → mobile layout → logout/login → export → deletion reauth → deleted-account login denied; no JS errors')
     finally:
         process.terminate()
         try:

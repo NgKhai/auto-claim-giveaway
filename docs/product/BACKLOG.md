@@ -34,6 +34,10 @@ P0 release gates apply before production, even where their dependencies are late
 
 ## First increment task sequence
 
+### AUTH-01a: next local privacy slice
+
+Priority P1; owner Dev, independent reviewer QA/QC; dependencies REL-01 and existing account/session/CSRF controls. Status: specified; implementation and verification pending. Deliver own-data JSON export and password/CSRF-protected atomic local account deletion with explicit browser consent. Acceptance and required tests are [PRIVACY.md](PRIVACY.md), PRIV-01–09. Apply the shared Definition of Done; passing this slice does not complete production authentication, retention or backup operations in AUTH-01/OPS-01.
+
 FND-01 → FND-02 → DISC-01 → POL-01 → APR-01 → REG-01 → TRK-01 → QA-01 → REL-01. PM and BA check each task against the SRS; Dev and QA exchange defects and retest results. Independent review must be an actual separate review, never a renamed self-check.
 
 ## Required progress record fields

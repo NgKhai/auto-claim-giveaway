@@ -6,7 +6,7 @@ Use a single Uvicorn process in the repository root. Dependencies are pinned at 
 Use the existing isolated cloud checkout; no worktree is required. Persistent files survive snapshots, processes do not. Restart Uvicorn for each task and verify GET /api/health plus the authenticated sandbox journey; an open port alone is insufficient.
 
 ## Production gates (not yet validated)
-Use HTTPS with Secure cookies, trusted host/origin configuration and a reverse proxy with body-size limits. Validate effective login throttling, signup abuse controls, password reset, session invalidation and account deletion before public exposure. No uncontrolled URL fetch or arbitrary generated-code executor is permitted.
+Use HTTPS with Secure cookies, trusted host/origin configuration and a reverse proxy with body-size limits. Validate effective login throttling, signup abuse controls, password reset and operational session/retention controls before public exposure. Local account deletion invalidates all owner sessions, but production backup-erasure and retention procedures remain unvalidated. No uncontrolled URL fetch or arbitrary generated-code executor is permitted.
 
 SQLite is limited to single-instance release evaluation. Before distributed workers, introduce PostgreSQL and schema migrations, transaction-based claim/receipt locking and recovery tests. Never infer external submission success after a timeout; store unknown and reconcile before retry.
 
@@ -20,3 +20,5 @@ Restricted command execution initially could not reach the proxy on port 8080. A
 
 ## Container artifact
 `Dockerfile` is a deployment starting point, not a verified production deployment. Build and registry access have not been validated in this environment. Persist `/app/.data` to a protected volume; terminate TLS before exposing the application. Verify non-root execution, health checks, backups, Secure-cookie configuration and release gates before hosting. Pin the base image digest and produce a transitive dependency lock/SBOM in the release pipeline.
+
+GitHub CI observation: `gh run list --repo NgKhai/auto-claim-giveaway --branch work` returned `Forbidden` from the GitHub API. Git read/push succeeded separately; that does not grant Actions API access. CI results are unverified remotely; local equivalent checks have executed.

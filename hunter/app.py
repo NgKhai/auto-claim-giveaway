@@ -32,6 +32,9 @@ class Goal(BaseModel):
         if not v.strip(): raise ValueError('Enter a goal')
         return v.strip()
 
+class AccountDeletion(BaseModel):
+    password: str = Field(min_length=1,max_length=256)
+
 class NewApplication(BaseModel):
     opportunity_id: str = Field(max_length=100)
 
@@ -80,6 +83,9 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
     with db() as c:
         if 'approval_expires' not in {r['name'] for r in c.execute('PRAGMA table_info(applications)')}:
             c.execute('ALTER TABLE applications ADD COLUMN approval_expires REAL')
+    with db() as c:
+        if 'user_id' not in {r['name'] for r in c.execute('PRAGMA table_info(login_limits)')}:
+            c.execute('ALTER TABLE login_limits ADD COLUMN user_id TEXT')
     def audit(c,uid,action,aid=None):
         c.execute('INSERT INTO audit(user_id,action,application_id,created_at) VALUES(?,?,?,?)',(uid,action,aid,time.time()))
     def identity(req,c,mutate=False):
@@ -126,14 +132,15 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
     def login(data:Credentials,response:Response,request:Request):
         failure=False
         with db() as c:
+            c.execute('DELETE FROM login_limits WHERE started<=?',(time.time()-900,))
             key=hashlib.sha256((data.email+'|'+(request.client.host if request.client else '')).encode()).hexdigest()
             limit=c.execute('SELECT * FROM login_limits WHERE key=?',(key,)).fetchone()
             if limit and limit['started']>time.time()-900 and limit['attempts']>=10: raise HTTPException(429,'Too many attempts; retry in 15 minutes')
             u=c.execute('SELECT * FROM users WHERE email=?',(data.email,)).fetchone()
             stored=u['password'] if u else pw('dummy-password','0'*32)
             if not u or not hmac.compare_digest(stored,pw(data.password,stored.split(':')[0])):
-                if limit and limit['started']>time.time()-900: c.execute('UPDATE login_limits SET attempts=attempts+1 WHERE key=?',(key,))
-                else: c.execute('INSERT OR REPLACE INTO login_limits VALUES(?,1,?)',(key,time.time()))
+                if limit and limit['started']>time.time()-900: c.execute('UPDATE login_limits SET attempts=attempts+1,user_id=? WHERE key=?',(u['id'] if u else None,key))
+                else: c.execute('INSERT OR REPLACE INTO login_limits(key,attempts,started,user_id) VALUES(?,1,?,?)',(key,time.time(),u['id'] if u else None))
                 failure=True
             else:
                 c.execute('DELETE FROM login_limits WHERE key=?',(key,)); result=session(c,u,response)
@@ -228,6 +235,43 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
         with db() as c:
             u=identity(request,c)
             return [dict(r) for r in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id DESC LIMIT 200',(u['id'],))]
+    @app.get('/api/account/export')
+    def export_account(request:Request,response:Response):
+        with db() as c:
+            u=identity(request,c)
+            profile={key:u[key] for key in ['id','email','country']}
+            goals=[dict(row) for row in c.execute('SELECT id,query,created_at FROM goals WHERE user_id=? ORDER BY created_at',(u['id'],))]
+            applications=[app_public(row) for row in c.execute('SELECT * FROM applications WHERE user_id=? ORDER BY id',(u['id'],))]
+            events=[dict(row) for row in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id',(u['id'],))]
+            response.headers['Content-Disposition']='attachment; filename="opportunity-hunter-export.json"'
+            return {'schema_version':1,'exported_at':datetime.now(timezone.utc).isoformat(),'profile':profile,'goals':goals,'applications':applications,'audit':events}
+
+    @app.post('/api/account/delete')
+    def delete_account(data:AccountDeletion,request:Request,response:Response):
+        failed=False
+        with db() as c:
+            u=identity(request,c,True)
+            c.execute('DELETE FROM login_limits WHERE started<=?',(time.time()-900,))
+            key=hashlib.sha256(('delete|'+u['id']).encode()).hexdigest()
+            limit=c.execute('SELECT * FROM login_limits WHERE key=?',(key,)).fetchone()
+            if limit and limit['started']>time.time()-900 and limit['attempts']>=10:
+                raise HTTPException(429,'Too many attempts; retry in 15 minutes')
+            if not hmac.compare_digest(u['password'],pw(data.password,u['password'].split(':')[0])):
+                if limit and limit['started']>time.time()-900:
+                    c.execute('UPDATE login_limits SET attempts=attempts+1,user_id=? WHERE key=?',(u['id'] if u else None,key))
+                else:
+                    c.execute('INSERT OR REPLACE INTO login_limits(key,attempts,started,user_id) VALUES(?,1,?,?)',(key,time.time(),u['id']))
+                failed=True
+            else:
+                for table in ['applications','goals','audit','sessions']:
+                    c.execute(f'DELETE FROM {table} WHERE user_id=?',(u['id'],))
+                c.execute('DELETE FROM users WHERE id=?',(u['id'],))
+                c.execute('DELETE FROM login_limits WHERE user_id=? OR key=?',(u['id'],key))
+        if failed:
+            raise HTTPException(401,'Current password is incorrect')
+        response.delete_cookie('hunter_session',path='/')
+        return {'status':'deleted'}
+
     web=Path(__file__).resolve().parent.parent/'web'
     if web.exists():
         app.mount('/static',StaticFiles(directory=web),name='static')

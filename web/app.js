@@ -10,7 +10,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options, headers, body: options.body !== undefined ? JSON.stringify(options.body) : undefined });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401 && state.user) { state.authEpoch++; state.user = null; showAuth(); }
+    if (response.status === 401 && state.user && !(path === '/api/account/delete' && data.detail === 'Current password is incorrect')) { state.authEpoch++; state.user = null; showAuth(); }
     const detail = data.detail;
     throw new Error(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(item => item.msg).join('; ') : `Yêu cầu thất bại (${response.status}). Vui lòng thử lại.`);
   }
@@ -18,7 +18,7 @@ async function api(path, options = {}) {
 }
 async function busy(button, action) { if (button.disabled) return; button.disabled = true; button.setAttribute('aria-busy', 'true'); try { await action(); } catch (error) { notice(error.message || 'Không thể kết nối. Vui lòng thử lại.', true); } finally { button.disabled = false; button.removeAttribute('aria-busy'); } }
 function date(value) { if (!value) return 'Chưa xác minh'; const d = new Date(typeof value === 'number' ? value * 1000 : value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }); }
-function showAuth() { state.selectedGoal = null; state.approval = null; state.goals = []; state.opportunities = []; state.applications = []; state.audit = []; $('#current-goal').textContent = 'Danh mục mẫu để kiểm chứng quy trình.'; $('#auth-view').hidden = false; $('#workspace-view').hidden = true; $('#account').hidden = true; if ($('#approval-dialog').open) $('#approval-dialog').close(); }
+function showAuth() { state.selectedGoal = null; state.approval = null; state.goals = []; state.opportunities = []; state.applications = []; state.audit = []; $('#current-goal').textContent = 'Danh mục mẫu để kiểm chứng quy trình.'; $('#auth-view').hidden = false; $('#workspace-view').hidden = true; $('#account').hidden = true; for (const selector of ['#approval-dialog', '#account-dialog', '#delete-account-dialog']) if ($(selector).open) $(selector).close(); $('#delete-password').value = ''; }
 function showWorkspace() { $('#auth-view').hidden = true; $('#workspace-view').hidden = false; $('#account').hidden = false; $('#account-email').textContent = state.user.email; }
 function panel(name) { for (const item of ['discover', 'tracking', 'activity']) $(`#${item}-panel`).hidden = item !== name; for (const tab of document.querySelectorAll('.tab')) { const active = tab.dataset.panel === name; tab.classList.toggle('active', active); if (active) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current'); } }
 function empty(parent, text) { parent.replaceChildren(el('div', text, 'empty')); }
@@ -75,3 +75,27 @@ $('#refresh').addEventListener('click', () => busy($('#refresh'), async () => { 
 $('#approval-cancel').addEventListener('click', () => $('#approval-dialog').close());
 $('#approval-confirm').addEventListener('click', () => busy($('#approval-confirm'), async () => { const application = state.approval; if (!application) return; await api(`/api/applications/${application.id}/approve`, { method: 'POST', body: { version: application.version } }); $('#approval-dialog').close(); state.approval = null; await refresh(); notice('Đã duyệt phiên bản này. Bạn có thể gửi trong sandbox hoặc thu hồi quyền.'); }));
 (async () => { try { state.user = await api('/api/me'); showWorkspace(); await refresh(); } catch (error) { if (state.user) notice(error.message, true); else showAuth(); } })();
+
+$('#account-settings').addEventListener('click', () => $('#account-dialog').showModal());
+$('#export-account').addEventListener('click', () => busy($('#export-account'), async () => {
+  const data = await api('/api/account/export');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = el('a'); link.href = url; link.download = 'opportunity-hunter-export.json'; document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  notice('Bản xuất dữ liệu đã được tạo. Hãy lưu tệp ở nơi riêng tư.');
+}));
+$('#begin-delete-account').addEventListener('click', () => {
+  $('#account-dialog').close(); $('#delete-password').value = ''; $('#delete-error').hidden = true; $('#delete-error').textContent = ''; $('#delete-account-dialog').showModal(); $('#delete-password').focus();
+});
+$('#cancel-delete-account').addEventListener('click', () => { $('#delete-account-dialog').close(); $('#delete-password').value = ''; $('#account-dialog').showModal(); });
+$('#delete-account-dialog').addEventListener('close', () => { $('#delete-password').value = ''; });
+$('#delete-account-form').addEventListener('submit', event => {
+  event.preventDefault();
+  busy($('#confirm-delete-account'), async () => {
+    $('#delete-error').hidden = true;
+    try { await api('/api/account/delete', { method: 'POST', body: { password: $('#delete-password').value } }); }
+    catch (error) { $('#delete-error').textContent = error.message; $('#delete-error').hidden = false; $('#delete-password').value = ''; $('#delete-password').focus(); return; }
+    state.authEpoch++; state.user = null; showAuth(); $('#goal-query').value = ''; notice('Đã xóa tài khoản và dữ liệu trên ứng dụng này.');
+  });
+});

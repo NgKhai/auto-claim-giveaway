@@ -21,3 +21,7 @@
 
 ## Review focus
 Expired or conflicting evidence; stale approvals; duplicate execution; tenant isolation; browser/API errors and misleading demo claims.
+
+## M2: local account privacy
+
+Spec: docs/product/PRIVACY.md. After verified M1 commit/push, implement tests-first GET /api/account/export excluding credentials/session/CSRF secrets and POST /api/account/delete with password reauthentication and existing origin/CSRF boundaries. Transaction removes own profile/goals/apps/audit/sessions only. Add explicit browser export/download and deletion confirmation controls. Independent QA must test wrong-password/CSRF denial, other-account survival and all-session invalidation; reviewer checks data minimization and deletion boundaries. Update evidence and commit/push as a separate increment after full regression. Production retention and third-party deletion remain future requirements.

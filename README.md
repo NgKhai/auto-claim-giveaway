@@ -4,7 +4,7 @@
 
 ## Trạng thái
 
-Bản đầu triển khai hành trình cục bộ: tài khoản → mục tiêu → cơ hội sandbox có bằng chứng → quyết định policy → duyệt → đăng ký sandbox → theo dõi và audit. Dữ liệu mẫu là dữ liệu tổng hợp, không phải ưu đãi thật. Không có đăng ký website thật, LLM, email hay Discord được bật trong bản này.
+Bản đầu triển khai hành trình cục bộ: tài khoản → mục tiêu → cơ hội sandbox có bằng chứng → quyết định policy → duyệt → đăng ký sandbox → theo dõi và audit. Dữ liệu mẫu là dữ liệu tổng hợp, không phải ưu đãi thật. Có xuất JSON dữ liệu riêng và xóa tài khoản cục bộ bằng mật khẩu xác nhận; thao tác xóa vô hiệu hóa mọi phiên của tài khoản. Không có đăng ký website thật, LLM, email hay Discord được bật trong bản này.
 
 Đây chưa phải bản production. Xem [PRD](docs/product/PRD.md), [SRS](docs/product/SRS.md), [backlog](docs/product/BACKLOG.md) và [ADR](docs/architecture/ADR-001.md).
 
@@ -37,3 +37,5 @@ API tự mô tả tại `/docs`. Test sử dụng cơ sở dữ liệu tạm, kh
 ## Phát hành
 
 Xem [vận hành](docs/OPERATIONS.md) và [kế hoạch kiểm thử](docs/quality/TEST-PLAN.md). Tích hợp bên ngoài, migrations production, browser E2E, phục hồi backup và kiểm chứng triển khai thực tế là các cổng riêng. Không dùng điểm đánh giá của LLM để cấp quyền hành động.
+
+Quyền riêng tư cục bộ: xem [phạm vi và kiểm thử](docs/product/PRIVACY.md). Xóa dữ liệu ứng dụng không xóa tài khoản nhà cung cấp hoặc các bản sao lưu bên ngoài.

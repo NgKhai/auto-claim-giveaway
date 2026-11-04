@@ -151,6 +151,104 @@ class ApiAcceptanceTests(unittest.TestCase):
                   if event['action'] == 'sandbox_submitted']
         self.assertEqual(len(events), 1)
 
+    def test_export_contains_only_owner_data_and_no_authentication_material(self):
+        self.post('/api/goals', {'query': 'alice private credits goal'})
+        self.application()
+        with TestClient(self.app) as bob:
+            bob.post('/api/auth/register', json={
+                'email': 'bob@example.test', 'password': 'DifferentPassword123!', 'country': 'VN'})
+            response = bob.get('/api/account/export')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertNotIn('alice@example.test', response.text)
+            self.assertNotIn('alice private credits goal', response.text)
+        response = self.client.get('/api/account/export')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn('attachment', response.headers.get('content-disposition', ''))
+        exported = response.json()
+        self.assertEqual(exported['profile']['email'], 'alice@example.test')
+        self.assertEqual(exported['goals'][0]['query'], 'alice private credits goal')
+        self.assertEqual(len(exported['applications']), 1)
+        def inspect(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    self.assertNotIn(key.lower(), {'password', 'password_hash', 'token', 'csrf',
+                        'csrf_token', 'sessions', 'approval_hash', 'login_limits'})
+                    inspect(child)
+            elif isinstance(value, list):
+                for child in value: inspect(child)
+        inspect(exported)
+        self.assertNotIn(self.csrf, response.text)
+        self.assertNotIn(self.client.cookies.get('hunter_session'), response.text)
+
+    def test_privacy_endpoints_require_authenticated_session(self):
+        with TestClient(self.app) as anonymous:
+            self.assertEqual(anonymous.get('/api/account/export').status_code, 401)
+            self.assertEqual(anonymous.post('/api/account/delete', json={
+                'password': 'DistinctPassword123!'}).status_code, 401)
+
+    def test_deletion_rejects_wrong_password_csrf_and_cross_origin_without_data_loss(self):
+        self.post('/api/goals', {'query': 'retained goal'})
+        self.assertEqual(self.post('/api/account/delete', {'password': 'wrong-password'}).status_code, 401)
+        self.assertEqual(self.client.post('/api/account/delete', json={
+            'password': 'DistinctPassword123!'}).status_code, 403)
+        self.assertEqual(self.client.post('/api/account/delete', json={
+            'password': 'DistinctPassword123!'}, headers={
+                'X-CSRF-Token': self.csrf, 'Origin': 'https://attacker.example'}).status_code, 403)
+        self.assertEqual(self.client.get('/api/me').status_code, 200)
+        self.assertEqual(self.client.get('/api/goals').json()[0]['query'], 'retained goal')
+
+    def test_account_deletion_erases_owner_data_invalidates_all_sessions_and_retains_other_owner(self):
+        import sqlite3
+        own_goal = self.post('/api/goals', {'query': 'delete me'}).json()
+        own_application = self.application()
+        own_id = self.client.get('/api/me').json()['id']
+        with TestClient(self.app) as other_session, TestClient(self.app) as bob:
+            login = other_session.post('/api/auth/login', json={
+                'email': 'alice@example.test', 'password': 'DistinctPassword123!'})
+            self.assertEqual(login.status_code, 200)
+            bob_signup = bob.post('/api/auth/register', json={
+                'email': 'bob@example.test', 'password': 'DifferentPassword123!', 'country': 'VN'}).json()
+            bob.post('/api/goals', json={'query': 'keep bob'},
+                     headers={'X-CSRF-Token': bob_signup['csrf_token']})
+            response = self.post('/api/account/delete', {'password': 'DistinctPassword123!'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(self.client.get('/api/me').status_code, 401)
+            self.assertEqual(other_session.get('/api/me').status_code, 401)
+            self.assertEqual(other_session.get('/api/account/export').status_code, 401)
+            self.assertEqual(bob.get('/api/me').status_code, 200)
+            self.assertEqual(bob.get('/api/goals').json()[0]['query'], 'keep bob')
+        with sqlite3.connect(self.db) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM users WHERE id=?', (own_id,)).fetchone()[0], 0)
+            for table in ['sessions', 'goals', 'applications', 'audit']:
+                self.assertEqual(connection.execute(f'SELECT count(*) FROM {table} WHERE user_id=?',
+                                 (own_id,)).fetchone()[0], 0, table)
+        response = self.client.post('/api/auth/login', json={
+            'email': 'alice@example.test', 'password': 'DistinctPassword123!'})
+        self.assertEqual(response.status_code, 401)
+
+    def test_account_deletion_rolls_back_all_data_when_final_delete_fails(self):
+        import sqlite3
+        self.post('/api/goals', {'query': 'rollback retained goal'})
+        self.application()
+        owner_id = self.client.get('/api/me').json()['id']
+        with sqlite3.connect(self.db) as connection:
+            counts_before = {table: connection.execute(
+                f'SELECT count(*) FROM {table} WHERE user_id=?', (owner_id,)).fetchone()[0]
+                for table in ['sessions', 'goals', 'applications', 'audit']}
+            connection.execute("CREATE TRIGGER reject_account_deletion BEFORE DELETE ON users BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
+        with TestClient(self.app, raise_server_exceptions=False) as fault_client:
+            fault_client.cookies.update(self.client.cookies)
+            response = fault_client.post('/api/account/delete', json={
+                'password': 'DistinctPassword123!'}, headers={'X-CSRF-Token': self.csrf})
+            self.assertEqual(response.status_code, 500)
+        self.assertEqual(self.client.get('/api/me').status_code, 200)
+        self.assertEqual(self.client.get('/api/goals').json()[0]['query'], 'rollback retained goal')
+        with sqlite3.connect(self.db) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM users WHERE id=?', (owner_id,)).fetchone()[0], 1)
+            for table, count in counts_before.items():
+                self.assertEqual(connection.execute(f'SELECT count(*) FROM {table} WHERE user_id=?',
+                    (owner_id,)).fetchone()[0], count, table)
+
     def test_login_failure_does_not_establish_session(self):
         with TestClient(self.app) as stranger:
             response = stranger.post('/api/auth/login', json={

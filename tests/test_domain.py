@@ -99,6 +99,56 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/goals', json={'query':'credits'}, headers=headers).status_code, 201)
         self.assertEqual(self.client.post('/api/auth/login', json={'email':'one@example.test','password':'StrongPass123!'}, headers={'Origin':'https://attacker.example'}).status_code, 403)
 
+    def test_account_export_contains_owner_data_without_credentials(self):
+        self.application()
+        self.post('/api/goals', {'query':'credits'})
+        response = self.client.get('/api/account/export')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment;', response.headers['content-disposition'])
+        data = response.json()
+        self.assertEqual(data['schema_version'], 1)
+        from datetime import datetime
+        self.assertIsNotNone(datetime.fromisoformat(data['exported_at']).tzinfo)
+        self.assertEqual(data['profile'], {k:self.user[k] for k in ['id','email','country']})
+        self.assertEqual(len(data['goals']), 1)
+        self.assertEqual(len(data['applications']), 1)
+        self.assertTrue(data['audit'])
+        raw = response.text
+        for excluded in ['csrf_token','approval_hash','password','hunter_session',self.user['csrf_token']]:
+            self.assertNotIn(excluded, raw)
+
+    def test_deletion_removes_owner_throttle_records_and_retains_other_owner(self):
+        import sqlite3
+        other=TestClient(self.client.app)
+        other_user=self.signup(other,'two@example.test')
+        self.client.post('/api/auth/login',json={'email':self.user['email'],'password':'wrong'})
+        other.post('/api/auth/login',json={'email':other_user['email'],'password':'wrong'})
+        with TestClient(self.client.app,client=('192.0.2.10',50001)) as another_ip:
+            another_ip.post('/api/auth/login',json={'email':self.user['email'],'password':'wrong'})
+        with sqlite3.connect(self.tmp.name+'/test.db') as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM login_limits WHERE user_id=?',(self.user['id'],)).fetchone()[0],2)
+        self.assertEqual(self.post('/api/account/delete',{'password':'StrongPass123!'}).status_code,200)
+        with sqlite3.connect(self.tmp.name+'/test.db') as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM login_limits WHERE user_id=?',(self.user['id'],)).fetchone()[0],0)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM login_limits WHERE user_id=?',(other_user['id'],)).fetchone()[0],1)
+        other.close()
+
+    def test_account_deletion_requires_password_and_invalidates_every_session(self):
+        import sqlite3
+        self.application()
+        self.post('/api/goals', {'query':'credits'})
+        second = TestClient(self.client.app)
+        self.assertEqual(second.post('/api/auth/login', json={'email':self.user['email'],'password':'StrongPass123!'}).status_code, 200)
+        self.assertEqual(self.post('/api/account/delete', {'password':'wrong'}).status_code, 401)
+        self.assertEqual(self.client.get('/api/me').status_code, 200)
+        self.assertEqual(self.post('/api/account/delete', {'password':'StrongPass123!'}).json(), {'status':'deleted'})
+        self.assertEqual(self.client.get('/api/me').status_code, 401)
+        self.assertEqual(second.get('/api/me').status_code, 401)
+        with sqlite3.connect(self.tmp.name + '/test.db') as db:
+            for table in ['users','sessions','goals','applications','audit']:
+                self.assertEqual(db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0],0)
+        second.close()
+
     def test_goals_are_scoped_and_login_validated(self):
         self.assertEqual(self.post('/api/goals',{'query':'developer credits'}).status_code,201)
         self.assertEqual(len(self.client.get('/api/goals').json()),1)

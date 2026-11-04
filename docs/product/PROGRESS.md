@@ -4,7 +4,7 @@ Updated 2026-11-05. Full product remains incomplete and is not production-ready.
 
 ## Current milestone
 
-M1 local sandbox journey implemented and accepted by independent QA for its tested scope. PM/BA's two conditional UI findings (exact-action consent and Unix audit time rendering) are resolved and explicitly verified in Chromium. Existing research files remain unchanged.
+M1 local sandbox journey and M2 local privacy increment implemented; M1 accepted by independent QA for its tested scope. PM/BA's two conditional UI findings (exact-action consent and Unix audit time rendering) are resolved and explicitly verified in Chromium. Existing research files remain unchanged.
 
 | Workstream | State | Evidence |
 | --- | --- | --- |
@@ -35,9 +35,11 @@ No unresolved high defect identified in the tested local slice. This is not a co
 
 ## Commit and push evidence
 
-M1 functional commit: pending final creation. Target: origin/work; no merge to main. Update following actual Git result.
+M1 functional commit: `a43f9e5` (`feat: add verified opportunity hunter sandbox workflow`). `git push -u origin work` succeeded; no merge to main. Remote CI result remains unobserved. M2 privacy export/deletion verified; final commit and push record follows.
 
 ## Next prioritized tasks
+
+AUTH-01a local privacy slice is implemented and independently accepted. See [PRIVACY.md](PRIVACY.md), [QA report](../quality/PRIVACY-REVIEW.md) and [code review](../quality/PRIVACY-CODE-REVIEW.md). Final regression: 30 tests passed; Chromium export/cancel/reauth/deletion and old-login denial passed. Atomic rollback under injected deletion failure and multi-IP throttle ownership were tested. Commit/push recorded below after completion. Legacy unassociated pseudonymous throttle hashes and production backup/retention remain explicitly limited.
 
 1. AUTH-01: account lifecycle/privacy (export/deletion/retention), Internet-facing auth hardening and abuse controls; add acceptance and independent security tests.
 2. SRC-01: permitted live read-only source registry, bounded ingestion, freshness/conflict evidence and SSRF/redirect/DNS controls.
@@ -47,3 +49,7 @@ M1 functional commit: pending final creation. Target: origin/work; no merge to m
 6. OPS-01/SEC-01/REL-02: production storage/migrations, locked dependencies, container build, real deployment/CI, measured load, monitoring, backup restoration and rollback validation.
 
 Live-provider permission, AI credentials, authorized notification destinations and hosting are not configured or verified. They block live integration/release checks, not the local development workflow. No emails, real registrations, awards or external deployment are claimed. Remaining software work is explicitly unfinished, not mislabeled as solely credential-blocked. Continue with AUTH-01, using the saved backlog and this record rather than rebuilding M1.
+
+## M2 final integration
+
+Node syntax, Python compile and git diff whitespace checks pass. CI Actions API read returned Forbidden while Git read/push works; remote CI remains unverified. M2 commit/push pending creation. No externally hosted product, provider integration, notification delivery or production readiness is claimed. Next work remains production auth/retention and SRC-01; implementation beyond the two local increments remains unfinished.
