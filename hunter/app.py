@@ -1,0 +1,238 @@
+import hashlib
+import hmac
+import json
+import os
+from pathlib import Path
+import secrets
+import sqlite3
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, field_validator
+
+class Credentials(BaseModel):
+    email: str = Field(min_length=3,max_length=254)
+    password: str = Field(min_length=1,max_length=256)
+    country: str = Field(default='VN',pattern=r'^[A-Z]{2}$')
+    @field_validator('email')
+    @classmethod
+    def email_valid(cls,v):
+        v=v.strip().lower()
+        if '@' not in v or '.' not in v.split('@')[-1]: raise ValueError('Email address required')
+        return v
+
+class Goal(BaseModel):
+    query: str = Field(min_length=1,max_length=500)
+    @field_validator('query')
+    @classmethod
+    def query_valid(cls,v):
+        if not v.strip(): raise ValueError('Enter a goal')
+        return v.strip()
+
+class NewApplication(BaseModel):
+    opportunity_id: str = Field(max_length=100)
+
+class Approval(BaseModel):
+    version: int
+
+BASE={'country':'VN','deadline':'2099-12-31T23:59:59+00:00','source_url':'sandbox://opportunity-hunter/credits','evidence':'Controlled local fixture; eligibility and automation permitted here only. No real reward.','is_sandbox':True,'description':'Local test opportunity. No external account or reward is created.','required_fields':['email']}
+OPPORTUNITIES={key:{**BASE,'id':key,'title':title,**changes} for key,title,changes in [
+    ('sandbox-credits','Sandbox developer credits',{}),
+    ('sandbox-expired','Sandbox expired campaign',{'deadline':'2020-01-01T00:00:00+00:00'}),
+    ('sandbox-country','Sandbox US-only campaign',{'country':'US'}),
+    ('sandbox-unverified','Sandbox missing evidence',{'evidence':''}),
+    ('sandbox-sensitive','Sandbox sensitive-data campaign',{'required_fields':['email','credit_card']})]}
+
+def policy(o,country):
+    if not o['is_sandbox']: return 'External automation unavailable; provider handoff required.'
+    if not o['evidence']: return 'Missing verification evidence.'
+    if datetime.fromisoformat(o['deadline'])<=datetime.now(timezone.utc): return 'Opportunity has expired.'
+    if o['country']!=country: return 'Country is not eligible.'
+    if set(o['required_fields'])-{'email'}: return 'Sensitive fields exceed permitted email scope.'
+    return ''
+
+def create_app(db_path=None):
+    path=Path(db_path or os.environ.get('HUNTER_DB_PATH',str(Path(__file__).resolve().parent.parent/'.data/hunter.sqlite3')))
+    path.parent.mkdir(parents=True,exist_ok=True)
+    app=FastAPI(title='Opportunity Hunter — sandbox')
+    @contextmanager
+    def db():
+        c=sqlite3.connect(str(path),timeout=10); c.row_factory=sqlite3.Row
+        try:
+            c.execute('PRAGMA foreign_keys=ON'); c.execute('BEGIN IMMEDIATE')
+            yield c
+            c.commit()
+        except Exception:
+            c.rollback(); raise
+        finally: c.close()
+    with db() as c:
+        c.executescript('''
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,password TEXT NOT NULL,country TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),csrf TEXT NOT NULL,expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS goals(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),query TEXT NOT NULL,created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),opportunity_id TEXT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,approval_hash TEXT,receipt TEXT,policy_reason TEXT NOT NULL,UNIQUE(user_id,opportunity_id));
+CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL,action TEXT NOT NULL,application_id TEXT,created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NOT NULL,started REAL NOT NULL);
+''')
+    with db() as c:
+        if 'approval_expires' not in {r['name'] for r in c.execute('PRAGMA table_info(applications)')}:
+            c.execute('ALTER TABLE applications ADD COLUMN approval_expires REAL')
+    def audit(c,uid,action,aid=None):
+        c.execute('INSERT INTO audit(user_id,action,application_id,created_at) VALUES(?,?,?,?)',(uid,action,aid,time.time()))
+    def identity(req,c,mutate=False):
+        raw=req.cookies.get('hunter_session','')
+        u=c.execute('SELECT u.*,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?',(hashlib.sha256(raw.encode()).hexdigest(),time.time())).fetchone()
+        if not u: raise HTTPException(401,'Sign in required')
+        if mutate and not hmac.compare_digest(req.headers.get('X-CSRF-Token',''),u['csrf']): raise HTTPException(403,'CSRF token required')
+        return u
+    def public(u,csrf=None): return {'id':u['id'],'email':u['email'],'country':u['country'],'csrf_token':csrf or u['csrf']}
+    def session(c,u,r):
+        token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32)
+        c.execute('INSERT INTO sessions VALUES(?,?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),u['id'],csrf,time.time()+43200))
+        r.set_cookie('hunter_session',token,httponly=True,samesite='strict',secure=os.environ.get('HUNTER_SECURE_COOKIE','0')=='1',max_age=43200,path='/')
+        return public(u,csrf)
+    def pw(password,salt=None):
+        salt=salt or secrets.token_hex(16)
+        return salt+':'+hashlib.pbkdf2_hmac('sha256',password.encode(),salt.encode(),310000).hex()
+    @app.middleware('http')
+    async def headers(req,call_next):
+        if req.method in {'POST','PUT','PATCH','DELETE'}:
+            origin=req.headers.get('origin')
+            if origin and origin != str(req.base_url).rstrip('/'):
+                return Response(content='Cross-origin request denied',status_code=403)
+            if req.headers.get('sec-fetch-site')=='cross-site':
+                return Response(content='Cross-site request denied',status_code=403)
+        r=await call_next(req)
+        r.headers.update({'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+        if req.url.path.startswith('/api/'): r.headers['Cache-Control']='no-store'
+        return r
+    @app.get('/api/health')
+    def health():
+        with db() as c: c.execute('SELECT 1')
+        return {'status':'ok','mode':'sandbox','external_registration_enabled':False}
+    @app.post('/api/auth/register',status_code=201)
+    def register(data:Credentials,response:Response):
+        if len(data.password)<12: raise HTTPException(422,'Password requires 12 characters')
+        with db() as c:
+            u={'id':secrets.token_hex(16),'email':data.email,'country':data.country}
+            try: c.execute('INSERT INTO users VALUES(?,?,?,?)',(u['id'],data.email,pw(data.password),data.country))
+            except sqlite3.IntegrityError: raise HTTPException(409,'Account already exists')
+            audit(c,u['id'],'account_created')
+            return session(c,u,response)
+    @app.post('/api/auth/login')
+    def login(data:Credentials,response:Response,request:Request):
+        failure=False
+        with db() as c:
+            key=hashlib.sha256((data.email+'|'+(request.client.host if request.client else '')).encode()).hexdigest()
+            limit=c.execute('SELECT * FROM login_limits WHERE key=?',(key,)).fetchone()
+            if limit and limit['started']>time.time()-900 and limit['attempts']>=10: raise HTTPException(429,'Too many attempts; retry in 15 minutes')
+            u=c.execute('SELECT * FROM users WHERE email=?',(data.email,)).fetchone()
+            stored=u['password'] if u else pw('dummy-password','0'*32)
+            if not u or not hmac.compare_digest(stored,pw(data.password,stored.split(':')[0])):
+                if limit and limit['started']>time.time()-900: c.execute('UPDATE login_limits SET attempts=attempts+1 WHERE key=?',(key,))
+                else: c.execute('INSERT OR REPLACE INTO login_limits VALUES(?,1,?)',(key,time.time()))
+                failure=True
+            else:
+                c.execute('DELETE FROM login_limits WHERE key=?',(key,)); result=session(c,u,response)
+        if failure: raise HTTPException(401,'Invalid email or password')
+        return result
+    @app.get('/api/me')
+    def me(request:Request):
+        with db() as c: return public(identity(request,c))
+    @app.post('/api/auth/logout')
+    def logout(request:Request,response:Response):
+        with db() as c:
+            identity(request,c,True)
+            c.execute('DELETE FROM sessions WHERE token=?',(hashlib.sha256(request.cookies['hunter_session'].encode()).hexdigest(),))
+        response.delete_cookie('hunter_session'); return {'status':'signed_out'}
+    @app.get('/api/goals')
+    def goals(request:Request):
+        with db() as c:
+            u=identity(request,c)
+            return [dict(r) for r in c.execute('SELECT id,query,created_at FROM goals WHERE user_id=? ORDER BY created_at DESC',(u['id'],))]
+    @app.post('/api/goals',status_code=201)
+    def add_goal(data:Goal,request:Request):
+        with db() as c:
+            u=identity(request,c,True); g={'id':secrets.token_hex(16),'query':data.query,'created_at':time.time()}
+            c.execute('INSERT INTO goals VALUES(?,?,?,?)',(g['id'],u['id'],g['query'],g['created_at'])); audit(c,u['id'],'goal_created'); return g
+    @app.get('/api/opportunities')
+    def opportunities(request:Request,goal_id:str|None=None):
+        with db() as c:
+            u=identity(request,c); query=''
+            if goal_id:
+                g=c.execute('SELECT query FROM goals WHERE id=? AND user_id=?',(goal_id,u['id'])).fetchone()
+                if not g: raise HTTPException(404,'Goal not found')
+                query=g['query'].lower()
+            rows=[{**o,'relevance':sum(w in (o['title']+' '+o['description']).lower() for w in query.split()),'policy_reason':policy(o,u['country'])} for o in OPPORTUNITIES.values()]
+            return sorted([r for r in rows if not query or r['relevance']>0],key=lambda r:r['relevance'],reverse=True)
+    def app_public(row):
+        r=dict(row); r.pop('user_id',None); r.pop('approval_hash',None); r['payload']=json.loads(r['payload']); r['title']=OPPORTUNITIES[r['opportunity_id']]['title']; r['action']={'name':'sandbox.register','destination':OPPORTUNITIES[r['opportunity_id']]['source_url'],'adapter_version':1}; return r
+    def get(c,u,aid):
+        row=c.execute('SELECT * FROM applications WHERE id=? AND user_id=?',(aid,u['id'])).fetchone()
+        if not row: raise HTTPException(404,'Application not found')
+        return row
+    def fingerprint(row): return hashlib.sha256((row['opportunity_id']+'|'+str(row['version'])+'|'+row['payload']+'|'+json.dumps({'action':'sandbox.register','adapter_version':1,'destination':OPPORTUNITIES[row['opportunity_id']]['source_url'],'required_fields':OPPORTUNITIES[row['opportunity_id']]['required_fields']},sort_keys=True)).encode()).hexdigest()
+    @app.get('/api/applications')
+    def applications(request:Request):
+        with db() as c:
+            u=identity(request,c)
+            return [app_public(r) for r in c.execute('SELECT * FROM applications WHERE user_id=?',(u['id'],))]
+    @app.post('/api/applications',status_code=201)
+    def create_application(data:NewApplication,request:Request):
+        with db() as c:
+            u=identity(request,c,True); o=OPPORTUNITIES.get(data.opportunity_id)
+            if not o: raise HTTPException(404,'Opportunity not found')
+            existing=c.execute('SELECT * FROM applications WHERE user_id=? AND opportunity_id=?',(u['id'],data.opportunity_id)).fetchone()
+            if existing:
+                expired=existing['status']=='ready' and (not existing['approval_expires'] or existing['approval_expires']<=time.time())
+                if existing['status']=='revoked' or expired:
+                    reason=policy(o,u['country'])
+                    c.execute('UPDATE applications SET status=?,version=version+1,approval_hash=NULL,approval_expires=NULL,policy_reason=? WHERE id=?',('blocked' if reason else 'awaiting_approval',reason,existing['id']))
+                    audit(c,u['id'],'application_renewed',existing['id'])
+                    return app_public(get(c,u,existing['id']))
+                return app_public(existing)
+            reason=policy(o,u['country']); aid=secrets.token_hex(16); payload=json.dumps({'email':u['email']},sort_keys=True)
+            c.execute('INSERT INTO applications(id,user_id,opportunity_id,status,version,payload,approval_hash,receipt,policy_reason) VALUES(?,?,?,?,1,?,NULL,NULL,?)',(aid,u['id'],data.opportunity_id,'blocked' if reason else 'awaiting_approval',payload,reason)); audit(c,u['id'],'application_created',aid)
+            return app_public(get(c,u,aid))
+    @app.post('/api/applications/{aid}/approve')
+    def approve(aid:str,data:Approval,request:Request):
+        with db() as c:
+            u=identity(request,c,True); row=get(c,u,aid)
+            if row['status']!='awaiting_approval' or row['version']!=data.version: raise HTTPException(409,'Approval stale or action ineligible')
+            reason=policy(OPPORTUNITIES[row['opportunity_id']],u['country'])
+            if reason: raise HTTPException(409,reason)
+            c.execute('UPDATE applications SET status=?,approval_hash=?,approval_expires=? WHERE id=?',('ready',fingerprint(row),time.time()+900,aid)); audit(c,u['id'],'approval_granted',aid)
+            return app_public(get(c,u,aid))
+    @app.post('/api/applications/{aid}/submit')
+    def submit(aid:str,request:Request):
+        with db() as c:
+            u=identity(request,c,True); row=get(c,u,aid)
+            if row['status']=='submitted': return app_public(row)
+            if row['status']!='ready' or row['approval_hash']!=fingerprint(row) or not row['approval_expires'] or row['approval_expires']<=time.time(): raise HTTPException(409,'Current explicit approval required')
+            reason=policy(OPPORTUNITIES[row['opportunity_id']],u['country'])
+            if reason: raise HTTPException(409,reason)
+            c.execute('UPDATE applications SET status=?,receipt=? WHERE id=?',('submitted','SANDBOX-'+secrets.token_hex(12),aid)); audit(c,u['id'],'sandbox_submitted',aid)
+            return app_public(get(c,u,aid))
+    @app.post('/api/applications/{aid}/revoke')
+    def revoke(aid:str,request:Request):
+        with db() as c:
+            u=identity(request,c,True); row=get(c,u,aid)
+            if row['status']=='submitted': raise HTTPException(409,'Submission completed; cannot undo')
+            c.execute('UPDATE applications SET status=?,approval_hash=NULL,version=version+1 WHERE id=?',('revoked',aid)); audit(c,u['id'],'approval_revoked',aid)
+            return app_public(get(c,u,aid))
+    @app.get('/api/audit')
+    def audit_log(request:Request):
+        with db() as c:
+            u=identity(request,c)
+            return [dict(r) for r in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id DESC LIMIT 200',(u['id'],))]
+    web=Path(__file__).resolve().parent.parent/'web'
+    if web.exists():
+        app.mount('/static',StaticFiles(directory=web),name='static')
+        @app.get('/')
+        def index(): return FileResponse(web/'index.html')
+    return app
+
+app=create_app()
