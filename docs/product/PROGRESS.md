@@ -35,11 +35,11 @@ No unresolved high defect identified in the tested local slice. This is not a co
 
 ## Commit and push evidence
 
-M1 functional commit: `a43f9e5` (`feat: add verified opportunity hunter sandbox workflow`). `git push -u origin work` succeeded; no merge to main. Remote CI result remains unobserved. M2 privacy export/deletion verified; final commit and push record follows.
+M1 functional commit: `a43f9e5` (`feat: add verified opportunity hunter sandbox workflow`). `git push -u origin work` succeeded; no merge to main. Remote CI result remains unobserved. M2 privacy export/deletion verified and pushed as `6897ced`; final record below.
 
 ## Next prioritized tasks
 
-AUTH-01a local privacy slice is implemented and independently accepted. See [PRIVACY.md](PRIVACY.md), [QA report](../quality/PRIVACY-REVIEW.md) and [code review](../quality/PRIVACY-CODE-REVIEW.md). Final regression: 30 tests passed; Chromium export/cancel/reauth/deletion and old-login denial passed. Atomic rollback under injected deletion failure and multi-IP throttle ownership were tested. Commit/push recorded below after completion. Legacy unassociated pseudonymous throttle hashes and production backup/retention remain explicitly limited.
+AUTH-01a local privacy slice is implemented and independently accepted. See [PRIVACY.md](PRIVACY.md), [QA report](../quality/PRIVACY-REVIEW.md) and [code review](../quality/PRIVACY-CODE-REVIEW.md). Final regression: 30 tests passed; Chromium export/cancel/reauth/deletion and old-login denial passed. Atomic rollback under injected deletion failure and multi-IP throttle ownership were tested. Commit/push recorded below. Legacy unassociated pseudonymous throttle hashes and production backup/retention remain explicitly limited.
 
 1. AUTH-01: account lifecycle/privacy (export/deletion/retention), Internet-facing auth hardening and abuse controls; add acceptance and independent security tests.
 2. SRC-01: permitted live read-only source registry, bounded ingestion, freshness/conflict evidence and SSRF/redirect/DNS controls.
@@ -52,4 +52,4 @@ Live-provider permission, AI credentials, authorized notification destinations a
 
 ## M2 final integration
 
-Node syntax, Python compile and git diff whitespace checks pass. CI Actions API read returned Forbidden while Git read/push works; remote CI remains unverified. M2 commit/push pending creation. No externally hosted product, provider integration, notification delivery or production readiness is claimed. Next work remains production auth/retention and SRC-01; implementation beyond the two local increments remains unfinished.
+Node syntax, Python compile and git diff whitespace checks pass. CI Actions API read returned Forbidden while Git read/push works; remote CI remains unverified. M2 commit `6897ced` (`feat(privacy): add account export and verified local deletion`) pushed successfully to `origin/work`. Final root suite on the multi-IP revision: 30/30 pass, 3.749 seconds. Final root Chromium smoke passed with no JavaScript errors. Working application sources were not changed after these checks. No externally hosted product, provider integration, notification delivery or production readiness is claimed. Next work remains production auth/retention and SRC-01; implementation beyond the two local increments remains unfinished.
