@@ -4,6 +4,8 @@ Updated 2026-11-05. Full product remains incomplete and is not production-ready.
 
 ## Current milestone
 
+M3 SRC-01a fixed-source documentation retrieval is specified in [SOURCES.md](SOURCES.md); implementation and independent verification are pending. The fixed registry entry is read-only, owner-scoped and separate from executable sandbox opportunities. Source eligibility/deadline/automation permission remain unknown. Source records must be included in owner export/deletion. Full general discovery, semantic extraction and arbitrary-source network safety remain unfinished.
+
 M1 local sandbox journey and M2 local privacy increment implemented; M1 accepted by independent QA for its tested scope. PM/BA's two conditional UI findings (exact-action consent and Unix audit time rendering) are resolved and explicitly verified in Chromium. Existing research files remain unchanged.
 
 | Workstream | State | Evidence |
@@ -53,3 +55,13 @@ Live-provider permission, AI credentials, authorized notification destinations a
 ## M2 final integration
 
 Node syntax, Python compile and git diff whitespace checks pass. CI Actions API read returned Forbidden while Git read/push works; remote CI remains unverified. M2 commit `6897ced` (`feat(privacy): add account export and verified local deletion`) pushed successfully to `origin/work`. Final root suite on the multi-IP revision: 30/30 pass, 3.749 seconds. Final root Chromium smoke passed with no JavaScript errors. Working application sources were not changed after these checks. No externally hosted product, provider integration, notification delivery or production readiness is claimed. Next work remains production auth/retention and SRC-01; implementation beyond the two local increments remains unfinished.
+
+## M3 verified integration — 2026-11-06
+
+SRC-01a fixed official source implemented and independently accepted within its read-only scope. Source evidence is separate from the synthetic executable opportunity catalog. Backend and QA tests cover transport bounds/deadline, unsupported compression, UTF-8, redirects, cooldown persistence/concurrency, owner isolation, freshness/change/error retention and privacy integration. Review fixed a slow-trickle total-timeout bug and UI freshness/account-switch regressions.
+
+Lead final regression: 50/50 tests passed in 7.037 seconds; JavaScript syntax, Python compile and whitespace checks passed. Baseline Chromium M1/M2 and dedicated Sources Chromium both passed with no JavaScript errors. The latter uses deterministic fixtures, including hostile text and preserved evidence after errors.
+
+Separate real-network check: authenticated API refresh over actual HTTPS returned 200 from the fixed official raw GitHub doc; hash `880671771eee701e5cff33ff4c8ba409c306e38039ea8a1bb6b9e5a9856db17a`, excerpt 3602 characters, fresh; immediate repeat 429, export contains one source. Eligibility/deadline/automation remain unknown. No account/provider registration or notification was sent. Document content may change after this check.
+
+Evidence: quality/SOURCES-QA.md and quality/SOURCES-CODE-REVIEW.md. Functional commit/push pending final creation. General live-source discovery, semantic/AI extraction, external adapters, monitoring, notifications and production operations remain incomplete.

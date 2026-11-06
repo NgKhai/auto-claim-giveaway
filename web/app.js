@@ -1,16 +1,17 @@
 'use strict';
 const $ = (selector) => document.querySelector(selector);
-const state = { user: null, mode: 'login', goals: [], opportunities: [], applications: [], audit: [], selectedGoal: null, approval: null, authEpoch: 0 };
+const state = { user: null, mode: 'login', goals: [], opportunities: [], applications: [], audit: [], sources: [], sourcesTimer: null, selectedGoal: null, approval: null, authEpoch: 0 };
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined && text !== null) node.textContent = String(text); if (className) node.className = className; return node; }
 function notice(message, error = false) { const node = $('#notice'); node.textContent = message; node.classList.toggle('error', error); node.hidden = !message; }
 async function api(path, options = {}) {
+  const requestEpoch = state.authEpoch;
   const headers = { ...options.headers };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (state.user?.csrf_token) headers['X-CSRF-Token'] = state.user.csrf_token;
   const response = await fetch(path, { credentials: 'same-origin', ...options, headers, body: options.body !== undefined ? JSON.stringify(options.body) : undefined });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401 && state.user && !(path === '/api/account/delete' && data.detail === 'Current password is incorrect')) { state.authEpoch++; state.user = null; showAuth(); }
+    if (response.status === 401 && requestEpoch === state.authEpoch && state.user && !(path === '/api/account/delete' && data.detail === 'Current password is incorrect')) { state.authEpoch++; state.user = null; showAuth(); }
     const detail = data.detail;
     throw new Error(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(item => item.msg).join('; ') : `Yêu cầu thất bại (${response.status}). Vui lòng thử lại.`);
   }
@@ -18,9 +19,9 @@ async function api(path, options = {}) {
 }
 async function busy(button, action) { if (button.disabled) return; button.disabled = true; button.setAttribute('aria-busy', 'true'); try { await action(); } catch (error) { notice(error.message || 'Không thể kết nối. Vui lòng thử lại.', true); } finally { button.disabled = false; button.removeAttribute('aria-busy'); } }
 function date(value) { if (!value) return 'Chưa xác minh'; const d = new Date(typeof value === 'number' ? value * 1000 : value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }); }
-function showAuth() { state.selectedGoal = null; state.approval = null; state.goals = []; state.opportunities = []; state.applications = []; state.audit = []; $('#current-goal').textContent = 'Danh mục mẫu để kiểm chứng quy trình.'; $('#auth-view').hidden = false; $('#workspace-view').hidden = true; $('#account').hidden = true; for (const selector of ['#approval-dialog', '#account-dialog', '#delete-account-dialog']) if ($(selector).open) $(selector).close(); $('#delete-password').value = ''; }
+function showAuth() { clearTimeout(state.sourcesTimer); state.sourcesTimer = null; state.sources = []; $('#sources').replaceChildren(); state.selectedGoal = null; state.approval = null; state.goals = []; state.opportunities = []; state.applications = []; state.audit = []; $('#current-goal').textContent = 'Danh mục mẫu để kiểm chứng quy trình.'; $('#auth-view').hidden = false; $('#workspace-view').hidden = true; $('#account').hidden = true; for (const selector of ['#approval-dialog', '#account-dialog', '#delete-account-dialog']) if ($(selector).open) $(selector).close(); $('#delete-password').value = ''; }
 function showWorkspace() { $('#auth-view').hidden = true; $('#workspace-view').hidden = false; $('#account').hidden = false; $('#account-email').textContent = state.user.email; }
-function panel(name) { for (const item of ['discover', 'tracking', 'activity']) $(`#${item}-panel`).hidden = item !== name; for (const tab of document.querySelectorAll('.tab')) { const active = tab.dataset.panel === name; tab.classList.toggle('active', active); if (active) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current'); } }
+function panel(name) { for (const item of ['discover', 'tracking', 'sources', 'activity']) $(`#${item}-panel`).hidden = item !== name; for (const tab of document.querySelectorAll('.tab')) { const active = tab.dataset.panel === name; tab.classList.toggle('active', active); if (active) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current'); } }
 function empty(parent, text) { parent.replaceChildren(el('div', text, 'empty')); }
 function badge(text, type = '') { return el('span', text, `badge ${type}`); }
 const statuses = { awaiting_approval: 'Chờ bạn phê duyệt', ready: 'Đã duyệt · sẵn sàng', submitted: 'Đã gửi trong sandbox', blocked: 'Bị chặn bởi chính sách', revoked: 'Đã thu hồi quyền', failed: 'Thực thi thất bại', submission_unknown: 'Chưa xác định kết quả' };
@@ -65,7 +66,7 @@ function renderApplications() {
 }
 function renderAudit() { const target = $('#audit'); target.replaceChildren(); if (!state.audit.length) return empty(target, 'Các hoạt động sẽ xuất hiện tại đây.'); for (const entry of state.audit) { const item = el('article', null, 'audit-item'); const content = el('div'); content.append(el('strong', entry.action || entry.event || 'Sự kiện')); const detail = entry.details || entry.detail || entry.data; if (detail) content.append(el('pre', typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))); const time = el('time', date(entry.created_at || entry.timestamp)); item.append(content, time); target.append(item); } }
 async function refreshOpportunities() { const epoch = state.authEpoch; const opportunities = await api(`/api/opportunities${state.selectedGoal ? `?goal_id=${encodeURIComponent(state.selectedGoal)}` : ''}`); if (epoch !== state.authEpoch) return; state.opportunities = opportunities; renderOpportunities(); }
-async function refresh() { const epoch = state.authEpoch; const [goals, applications, audit] = await Promise.all([api('/api/goals'), api('/api/applications'), api('/api/audit')]); if (epoch !== state.authEpoch) return; Object.assign(state, { goals, applications, audit }); renderGoals(); renderApplications(); renderAudit(); await refreshOpportunities(); }
+async function refresh() { const epoch = state.authEpoch; const [goals, applications, audit, sources] = await Promise.all([api('/api/goals'), api('/api/applications'), api('/api/audit'), api('/api/sources')]); if (epoch !== state.authEpoch) return; Object.assign(state, { goals, applications, audit, sources }); renderGoals(); renderApplications(); renderAudit(); renderSources(); await refreshOpportunities(); }
 $('#auth-mode').addEventListener('click', () => { state.mode = state.mode === 'login' ? 'register' : 'login'; const register = state.mode === 'register'; $('#auth-title').textContent = register ? 'Tạo không gian của bạn' : 'Chào mừng trở lại'; $('#auth-description').textContent = register ? 'Bắt đầu với một tài khoản riêng và quyền kiểm soát rõ ràng.' : 'Đăng nhập để tiếp tục theo dõi cơ hội của bạn.'; $('#country-field').hidden = !register; $('#password').autocomplete = register ? 'new-password' : 'current-password'; $('#auth-submit').textContent = register ? 'Tạo tài khoản ↗' : 'Đăng nhập ↗'; $('#auth-toggle-label').textContent = register ? 'Đã có tài khoản?' : 'Bạn chưa có tài khoản?'; $('#auth-mode').textContent = register ? 'Đăng nhập' : 'Tạo tài khoản'; notice(''); });
 $('#auth-form').addEventListener('submit', event => { event.preventDefault(); busy($('#auth-submit'), async () => { const body = { email: $('#email').value.trim(), password: $('#password').value }; if (state.mode === 'register') body.country = $('#country').value; state.user = await api(`/api/auth/${state.mode}`, { method: 'POST', body }); state.authEpoch++; $('#password').value = ''; showWorkspace(); notice(''); await refresh(); }); });
 $('#logout').addEventListener('click', () => busy($('#logout'), async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); state.authEpoch++; Object.assign(state, { user: null, goals: [], opportunities: [], applications: [], audit: [], selectedGoal: null }); showAuth(); notice('Đã đăng xuất.'); }));
@@ -99,3 +100,51 @@ $('#delete-account-form').addEventListener('submit', event => {
     state.authEpoch++; state.user = null; showAuth(); $('#goal-query').value = ''; notice('Đã xóa tài khoản và dữ liệu trên ứng dụng này.');
   });
 });
+
+function sourceLink(url, label) {
+  let parsed; try { parsed = new URL(url); } catch { return el('span', url || 'Chưa xác minh'); }
+  if (parsed.protocol !== 'https:') return el('span', url);
+  const link = el('a', label || url, 'source-link'); link.href = parsed.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; return link;
+}
+function renderSources() {
+  clearTimeout(state.sourcesTimer); state.sourcesTimer = null;
+  const target = $('#sources'); target.replaceChildren();
+  if (!state.sources.length) return empty(target, 'Chưa có nguồn chính thức trong danh sách cho phép.');
+  let nextCooldown = Infinity;
+  const labels = { not_fetched: 'Chưa truy xuất', fresh: 'Bản lưu gần đây', stale: 'Bản lưu đã cũ', unverified: 'Lần truy xuất mới chưa xác minh' };
+  for (const source of state.sources) {
+    const card = el('article', null, 'source-card'); card.dataset.sourceId = source.id;
+    const top = el('div', null, 'card-top'); top.append(badge('CHỈ ĐỌC'), badge(labels[source.status] || 'Chưa xác minh', source.status === 'fresh' ? '' : 'warning'));
+    card.append(top, el('h3', source.title));
+    const urls = el('div', null, 'source-urls'); urls.append(el('strong', 'Trang chính thức'), sourceLink(source.canonical_url || source.source_url), el('strong', 'Địa chỉ tài liệu được đọc'), sourceLink(source.source_url)); card.append(urls);
+    const attribution = el('p', null, 'source-attribution'); attribution.append(el('span', source.attribution || 'GitHub documentation contributors')); if (source.license_url) { attribution.append(document.createTextNode(' · '), sourceLink(source.license_url, source.license || 'Giấy phép nội dung')); } card.append(attribution);
+    card.append(el('p', 'Phạm vi: đọc bằng chứng về điều kiện. Đủ điều kiện: chưa xác minh. Hạn đăng ký: chưa xác minh. Quyền automation: chưa xác minh.', 'muted'));
+    const evidence = source.evidence;
+    if (evidence) {
+      const meta = el('dl', null, 'source-metadata'); meta.append(el('dt', 'Truy xuất thành công lúc'), el('dd', date(evidence.retrieved_at)), el('dt', 'SHA-256 nội dung'), el('dd', evidence.content_hash || 'Chưa có hash'));
+      card.append(meta);
+      const freshness = evidence.freshness || source.evidence_freshness || 'unknown';
+      card.append(badge(freshness === 'fresh' ? 'BẢN LƯU: TRONG 24 GIỜ' : freshness === 'stale' ? 'BẢN LƯU: QUÁ 24 GIỜ' : 'TUỔI BẢN LƯU: CHƯA XÁC MINH', freshness === 'fresh' ? '' : 'warning'));
+      if (evidence.changed) card.append(el('p', 'Nội dung đã thay đổi so với bản lưu thành công trước đó. Hãy đọc lại; thay đổi này không tự cấp quyền hoặc xác nhận điều kiện.', 'source-change'));
+      const details = el('details', null, 'source-excerpt'); details.open = true; details.append(el('summary', 'Trích đoạn Markdown gốc (tối đa 4.000 ký tự) · chưa xử lý mẫu Liquid'), el('pre', evidence.excerpt || 'Bản lưu chưa có trích đoạn.')); card.append(details, el('p', 'Đây là trích đoạn từ tài liệu gốc, có thể bị cắt và chứa chỉ thị mẫu Liquid chưa được mở rộng. Nội dung không đầy đủ để tự kết luận điều kiện hoặc quyền lợi.', 'muted'));
+      if (source.status === 'stale') card.append(el('p', 'Bản lưu đã quá thời hạn mới. Hãy đọc lại nguồn để kiểm tra thay đổi.', 'source-change'));
+      if (source.status === 'unverified') card.append(el('p', 'Lần cập nhật mới nhất chưa thành công. Tuổi của bản lưu thành công được hiển thị riêng; chưa xác minh được nội dung hiện tại tại nguồn.', 'source-change'));
+    } else card.append(el('p', 'Chưa có bản lưu. Chọn “Đọc nguồn chính thức” để truy xuất tài liệu qua máy chủ.', 'muted'));
+    if (source.last_error) card.append(el('p', `Không thể xác minh lần truy xuất mới (${source.last_error}). Bản lưu thành công trước đó được giữ nguyên. Kiểm tra kết nối hoặc chính sách truy cập rồi thử lại sau thời gian chờ.`, 'source-error'));
+    if (source.last_attempt_at) card.append(el('p', `Lần thử gần nhất: ${date(source.last_attempt_at)}`, 'muted'));
+    const cooldown = Math.max(0, (source.cooldown_until || 0) * 1000 - Date.now());
+    const button = el('button', cooldown > 0 ? `Thử lại sau ${Math.ceil(cooldown / 1000)} giây` : evidence ? 'Đọc lại nguồn chính thức' : 'Đọc nguồn chính thức', 'primary'); button.dataset.sourceRefresh = source.id; button.disabled = cooldown > 0;
+    if (cooldown > 0) nextCooldown = Math.min(nextCooldown, cooldown);
+    button.addEventListener('click', () => busy(button, async () => {
+      const epoch = state.authEpoch; let failure = null;
+      try { await api(`/api/sources/${encodeURIComponent(source.id)}/refresh`, { method: 'POST', body: {} }); } catch (error) { failure = error; }
+      if (epoch !== state.authEpoch) return;
+      const sources = await api('/api/sources'); if (epoch !== state.authEpoch) return;
+      state.sources = sources; renderSources();
+      if (failure) notice(`${failure.message} Bằng chứng đã lưu được giữ nguyên; hãy xem trạng thái nguồn và thời gian thử lại.`, true);
+      else notice('Đã đọc nguồn chính thức và lưu bằng chứng. Điều kiện, phần thưởng và quyền automation vẫn cần xác minh riêng.');
+    }));
+    card.append(button, el('small', 'Giới hạn: tối đa một lần thử mỗi 60 giây cho mỗi tài khoản. Không có thao tác đăng ký từ nguồn này.')); target.append(card);
+  }
+  if (Number.isFinite(nextCooldown)) { const epoch = state.authEpoch; state.sourcesTimer = setTimeout(() => { if (epoch === state.authEpoch && state.user) renderSources(); }, Math.min(nextCooldown + 30, 1000)); }
+}

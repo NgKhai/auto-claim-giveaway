@@ -30,6 +30,8 @@ Correct password plus authenticated CSRF-protected request provides the server-s
 
 ## Required independent acceptance tests
 
+SRC-01a extends this contract to owner-scoped source evidence records: include them in owner export and remove them atomically on account deletion, preserving other owners. See [SOURCES.md](SOURCES.md), SRC-A10. This extension remains pending verification until populated-source privacy tests run.
+
 | ID | Case | Expected result |
 | --- | --- | --- |
 | PRIV-01 | Export with profile, goals, apps and audit | Complete owner-only JSON; required secret/internal fields absent recursively |

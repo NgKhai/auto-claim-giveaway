@@ -34,9 +34,13 @@ P0 release gates apply before production, even where their dependencies are late
 
 ## First increment task sequence
 
-### AUTH-01a: next local privacy slice
+### AUTH-01a: accepted local privacy slice
 
-Priority P1; owner Dev, independent reviewer QA/QC; dependencies REL-01 and existing account/session/CSRF controls. Status: specified; implementation and verification pending. Deliver own-data JSON export and password/CSRF-protected atomic local account deletion with explicit browser consent. Acceptance and required tests are [PRIVACY.md](PRIVACY.md), PRIV-01–09. Apply the shared Definition of Done; passing this slice does not complete production authentication, retention or backup operations in AUTH-01/OPS-01.
+Priority P1; owner Dev, independent reviewer QA/QC; dependencies REL-01 and existing account/session/CSRF controls. Status: locally accepted and pushed in `6897ced`; detailed executed evidence is in [PROGRESS.md](PROGRESS.md) and the privacy QA/code-review reports. Own-data JSON export and password/CSRF-protected atomic local account deletion have explicit browser consent. Acceptance and required tests are [PRIVACY.md](PRIVACY.md), PRIV-01–09. Passing this slice does not complete production authentication, retention or backup operations in AUTH-01/OPS-01.
+
+### SRC-01a: next fixed-source read-only slice
+
+Priority P1; owner Dev, independent reviewer QA/QC; dependencies accepted local account/privacy controls and existing approved network access. Status: specified; implementation and independent verification pending. Add the fixed GitHub Education document registry, owner-scoped bounded refresh/evidence/freshness/cooldown, a separate read-only Sources tab and privacy export/deletion coverage. Acceptance and required tests: [SOURCES.md](SOURCES.md), SRC-A01–12. General ingestion/semantic discovery, arbitrary-source SSRF architecture and provider registration remain incomplete SRC-01/AI-01/WEB-01 work.
 
 FND-01 → FND-02 → DISC-01 → POL-01 → APR-01 → REG-01 → TRK-01 → QA-01 → REL-01. PM and BA check each task against the SRS; Dev and QA exchange defects and retest results. Independent review must be an actual separate review, never a renamed self-check.
 

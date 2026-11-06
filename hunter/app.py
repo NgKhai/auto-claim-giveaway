@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from hunter.sources import REGISTRY, COOLDOWN_SECONDS, SourceFailure, fetch_source, source_view
 
 class Credentials(BaseModel):
     email: str = Field(min_length=3,max_length=254)
@@ -38,6 +39,9 @@ class AccountDeletion(BaseModel):
 class NewApplication(BaseModel):
     opportunity_id: str = Field(max_length=100)
 
+class SourceRefresh(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
 class Approval(BaseModel):
     version: int
 
@@ -57,7 +61,7 @@ def policy(o,country):
     if set(o['required_fields'])-{'email'}: return 'Sensitive fields exceed permitted email scope.'
     return ''
 
-def create_app(db_path=None):
+def create_app(db_path=None, source_transport=None):
     path=Path(db_path or os.environ.get('HUNTER_DB_PATH',str(Path(__file__).resolve().parent.parent/'.data/hunter.sqlite3')))
     path.parent.mkdir(parents=True,exist_ok=True)
     app=FastAPI(title='Opportunity Hunter — sandbox')
@@ -78,6 +82,7 @@ CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS goals(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),query TEXT NOT NULL,created_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),opportunity_id TEXT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,approval_hash TEXT,receipt TEXT,policy_reason TEXT NOT NULL,UNIQUE(user_id,opportunity_id));
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL,action TEXT NOT NULL,application_id TEXT,created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS source_records(user_id TEXT NOT NULL REFERENCES users(id),source_id TEXT NOT NULL,last_attempt_at REAL NOT NULL,attempt_id TEXT NOT NULL,last_error TEXT,content_hash TEXT,retrieved_at REAL,excerpt TEXT,changed INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,source_id));
 CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NOT NULL,started REAL NOT NULL);
 ''')
     with db() as c:
@@ -86,6 +91,9 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
     with db() as c:
         if 'user_id' not in {r['name'] for r in c.execute('PRAGMA table_info(login_limits)')}:
             c.execute('ALTER TABLE login_limits ADD COLUMN user_id TEXT')
+    with db() as c:
+        if 'truncated' not in {r['name'] for r in c.execute('PRAGMA table_info(source_records)')}:
+            c.execute('ALTER TABLE source_records ADD COLUMN truncated INTEGER NOT NULL DEFAULT 0')
     def audit(c,uid,action,aid=None):
         c.execute('INSERT INTO audit(user_id,action,application_id,created_at) VALUES(?,?,?,?)',(uid,action,aid,time.time()))
     def identity(req,c,mutate=False):
@@ -235,6 +243,49 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
         with db() as c:
             u=identity(request,c)
             return [dict(r) for r in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id DESC LIMIT 200',(u['id'],))]
+    @app.get('/api/sources')
+    def list_sources(request:Request):
+        with db() as c:
+            u=identity(request,c)
+            rows={r['source_id']:r for r in c.execute('SELECT * FROM source_records WHERE user_id=?',(u['id'],))}
+            return [source_view(sid,rows.get(sid)) for sid in REGISTRY]
+
+    @app.post('/api/sources/{source_id}/refresh')
+    def refresh_source(source_id:str,data:SourceRefresh,request:Request):
+        # Claim the persistent cooldown while holding a short transaction, then
+        # release the DB before doing any remote I/O.
+        with db() as c:
+            u=identity(request,c,True)
+            if source_id not in REGISTRY: raise HTTPException(404,'Source not found')
+            row=c.execute('SELECT * FROM source_records WHERE user_id=? AND source_id=?',(u['id'],source_id)).fetchone()
+            now=time.time()
+            if row and now-row['last_attempt_at']<COOLDOWN_SECONDS:
+                raise HTTPException(429,'Source refresh cooldown: retry after 60 seconds')
+            attempt=secrets.token_hex(16)
+            c.execute('INSERT INTO source_records(user_id,source_id,last_attempt_at,attempt_id,last_error) VALUES(?,?,?,?,?) ON CONFLICT(user_id,source_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,attempt_id=excluded.attempt_id,last_error=excluded.last_error',(u['id'],source_id,now,attempt,'refresh_in_progress'))
+            uid=u['id']
+        failure=None
+        try:
+            evidence=fetch_source(source_id,source_transport)
+        except SourceFailure as exc:
+            failure=str(exc)
+        with db() as c:
+            # Account deletion during a fetch must never recreate private state.
+            if not c.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone():
+                raise HTTPException(401,'Account no longer exists')
+            row=c.execute('SELECT * FROM source_records WHERE user_id=? AND source_id=?',(uid,source_id)).fetchone()
+            if not row or row['attempt_id']!=attempt: raise HTTPException(409,'Refresh superseded')
+            if failure:
+                c.execute('UPDATE source_records SET last_error=? WHERE user_id=? AND source_id=?',(failure,uid,source_id))
+                audit(c,uid,'source_refresh_failed')
+            else:
+                changed=bool(row['content_hash'] and row['content_hash']!=evidence['content_hash'])
+                c.execute('UPDATE source_records SET last_error=NULL,content_hash=?,retrieved_at=?,excerpt=?,changed=?,truncated=? WHERE user_id=? AND source_id=?',(evidence['content_hash'],evidence['retrieved_at'],evidence['excerpt'],int(changed),int(evidence['truncated']),uid,source_id))
+                audit(c,uid,'source_refreshed')
+            result=source_view(source_id,c.execute('SELECT * FROM source_records WHERE user_id=? AND source_id=?',(uid,source_id)).fetchone())
+        if failure: raise HTTPException(502,'Official source refresh failed: '+failure)
+        return result
+
     @app.get('/api/account/export')
     def export_account(request:Request,response:Response):
         with db() as c:
@@ -243,8 +294,9 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
             goals=[dict(row) for row in c.execute('SELECT id,query,created_at FROM goals WHERE user_id=? ORDER BY created_at',(u['id'],))]
             applications=[app_public(row) for row in c.execute('SELECT * FROM applications WHERE user_id=? ORDER BY id',(u['id'],))]
             events=[dict(row) for row in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id',(u['id'],))]
+            sources=[source_view(row['source_id'],row) for row in c.execute('SELECT * FROM source_records WHERE user_id=?',(u['id'],)) if row['source_id'] in REGISTRY]
             response.headers['Content-Disposition']='attachment; filename="opportunity-hunter-export.json"'
-            return {'schema_version':1,'exported_at':datetime.now(timezone.utc).isoformat(),'profile':profile,'goals':goals,'applications':applications,'audit':events}
+            return {'schema_version':1,'exported_at':datetime.now(timezone.utc).isoformat(),'profile':profile,'goals':goals,'applications':applications,'audit':events,'sources':sources}
 
     @app.post('/api/account/delete')
     def delete_account(data:AccountDeletion,request:Request,response:Response):
@@ -263,7 +315,7 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
                     c.execute('INSERT OR REPLACE INTO login_limits(key,attempts,started,user_id) VALUES(?,1,?,?)',(key,time.time(),u['id']))
                 failed=True
             else:
-                for table in ['applications','goals','audit','sessions']:
+                for table in ['applications','goals','audit','sessions','source_records']:
                     c.execute(f'DELETE FROM {table} WHERE user_id=?',(u['id'],))
                 c.execute('DELETE FROM users WHERE id=?',(u['id'],))
                 c.execute('DELETE FROM login_limits WHERE user_id=? OR key=?',(u['id'],key))

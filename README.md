@@ -39,3 +39,11 @@ API tự mô tả tại `/docs`. Test sử dụng cơ sở dữ liệu tạm, kh
 Xem [vận hành](docs/OPERATIONS.md) và [kế hoạch kiểm thử](docs/quality/TEST-PLAN.md). Tích hợp bên ngoài, migrations production, browser E2E, phục hồi backup và kiểm chứng triển khai thực tế là các cổng riêng. Không dùng điểm đánh giá của LLM để cấp quyền hành động.
 
 Quyền riêng tư cục bộ: xem [phạm vi và kiểm thử](docs/product/PRIVACY.md). Xóa dữ liệu ứng dụng không xóa tài khoản nhà cung cấp hoặc các bản sao lưu bên ngoài.
+
+## Nguồn tài liệu chính thức (SRC-01a)
+
+Tab **Nguồn** đọc một tài liệu GitHub Education cố định qua HTTPS. Bằng chứng gồm thời điểm lấy, SHA-256 của toàn bộ nội dung và excerpt Markdown nguyên văn; biến Liquid không được kết xuất. Tài liệu được ghi nguồn GitHub documentation contributors, giấy phép CC-BY-4.0.
+
+Mỗi tài khoản có bằng chứng riêng, cooldown 60 giây và trạng thái tuổi dữ liệu 24 giờ. Lỗi tải không xóa bằng chứng thành công trước đó. Nguồn này chưa xác nhận eligibility, deadline hay quyền automation và không có nút đăng ký thật. Danh mục cơ hội và executor cũ vẫn là sandbox.
+
+Không nhận URL tùy ý: chỉ registry do code định nghĩa mới được truy cập, không theo redirect. Xem [hợp đồng nguồn](docs/product/SOURCES.md). Các test dùng transport giả lập có kiểm soát; kiểm chứng HTTPS thật được ghi riêng trong tiến độ.

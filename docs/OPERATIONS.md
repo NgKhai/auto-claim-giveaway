@@ -22,3 +22,9 @@ Restricted command execution initially could not reach the proxy on port 8080. A
 `Dockerfile` is a deployment starting point, not a verified production deployment. Build and registry access have not been validated in this environment. Persist `/app/.data` to a protected volume; terminate TLS before exposing the application. Verify non-root execution, health checks, backups, Secure-cookie configuration and release gates before hosting. Pin the base image digest and produce a transitive dependency lock/SBOM in the release pipeline.
 
 GitHub CI observation: `gh run list --repo NgKhai/auto-claim-giveaway --branch work` returned `Forbidden` from the GitHub API. Git read/push succeeded separately; that does not grant Actions API access. CI results are unverified remotely; local equivalent checks have executed.
+
+## Read-only source connector
+
+SRC-01a requires only HTTPS to `raw.githubusercontent.com` through inherited proxy/CA trust, with TLS verification enabled. The fixed GitHub Education document is the only fetch target; docs.github.com and license URLs are outbound links for the user's browser, not automatic crawler destinations. No user profile/session data is forwarded to the document host. No model or provider credentials are required. Registry changes require reviewed code and new tests, not user-provided URLs.
+
+Source evidence and attempt/cooldown metadata are account-owned SQLite data included in export/deletion. Failures retain previous success and are shown separately from evidence age. Freshness indicates retrieval age, not verification of the user's eligibility or currency of every provider statement. Refresh is explicit and rate-limited; this is not a background monitoring service.
