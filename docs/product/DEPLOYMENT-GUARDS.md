@@ -28,3 +28,7 @@ Production rejects non-HTTPS requests before routes, except /api/health for inte
 ## Plan
 
 Backend tests first in tests/test_config.py, config module hunter/config.py and minimal app integration. Independent QA in tests/test_deployment_api.py and DEPLOYMENT-QA.md; independent review in DEPLOYMENT-CODE-REVIEW.md. Root runs full regression, both browsers, syntax/compile/diff checks, then creates a separate verified commit and pushes it. Preserve the M3 source increment and its tests. Hosted identity, password reset, email verification, distributed rate limits, retention, secrets, transitive dependency locks and operational drills remain later gates.
+
+## Verified local outcome
+
+Implemented in commit0230b95, pushed to origin/work. Root host regression65/65 and both Chromium flows passed. Rebuilt non-root container also passed65/65, with HTTP200 health/root/static runtime checks. Independent QA/code review is in ../quality/DEPLOYMENT-QA.md and ../quality/DEPLOYMENT-CODE-REVIEW.md. Container COPY ownership failure was fixed and retested; optional build CA mount preserves pip TLS verification. Production deployment, real TLS/proxy termination and full hosted authentication remain unverified.
