@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from hunter.analysis import analyze_source
 from hunter.config import Settings, ConfigurationError, ExactTrustedHostMiddleware, normalize_origin
 from hunter.sources import REGISTRY, COOLDOWN_SECONDS, SourceFailure, fetch_source, source_view
 
@@ -263,6 +264,14 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
             rows={r['source_id']:r for r in c.execute('SELECT * FROM source_records WHERE user_id=?',(u['id'],))}
             return [source_view(sid,rows.get(sid)) for sid in REGISTRY]
 
+    @app.get('/api/sources/{source_id}/analysis')
+    def source_analysis(source_id:str,request:Request):
+        with db() as c:
+            u=identity(request,c)
+            if source_id not in REGISTRY: raise HTTPException(404,'Source not found')
+            row=c.execute('SELECT * FROM source_records WHERE user_id=? AND source_id=?',(u['id'],source_id)).fetchone()
+            return analyze_source(source_view(source_id,row))
+
     @app.post('/api/sources/{source_id}/refresh')
     def refresh_source(source_id:str,data:SourceRefresh,request:Request):
         # Claim the persistent cooldown while holding a short transaction, then
@@ -309,7 +318,7 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
             events=[dict(row) for row in c.execute('SELECT id,action,application_id,created_at FROM audit WHERE user_id=? ORDER BY id',(u['id'],))]
             sources=[source_view(row['source_id'],row) for row in c.execute('SELECT * FROM source_records WHERE user_id=?',(u['id'],)) if row['source_id'] in REGISTRY]
             response.headers['Content-Disposition']='attachment; filename="opportunity-hunter-export.json"'
-            return {'schema_version':1,'exported_at':datetime.now(timezone.utc).isoformat(),'profile':profile,'goals':goals,'applications':applications,'audit':events,'sources':sources}
+            return {'schema_version':1,'exported_at':datetime.now(timezone.utc).isoformat(),'profile':profile,'goals':goals,'applications':applications,'audit':events,'sources':sources,'analyses':[analyze_source(source) for source in sources]}
 
     @app.post('/api/account/delete')
     def delete_account(data:AccountDeletion,request:Request,response:Response):

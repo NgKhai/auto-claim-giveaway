@@ -32,6 +32,14 @@ During review, cached-evidence freshness was initially hidden behind an `unverif
 
 The frontend reported and corrected accidental freshness rendering in sandbox opportunities and delayed old-session response handling; baseline/source browser runs above occurred after those saved changes. These browser runs verify the covered normal journeys, not every possible asynchronous response interleaving.
 
+## M5 browser regression compatibility
+
+The root's final M5 integration run caught a failure in the older Sources smoke assertion that required exactly one button. The source card now correctly includes two reviewed read-only controls: refresh and analysis. The failed assertion conflated the legitimate analysis control with an external registration control; it did not show that registration was enabled.
+
+The test now explicitly requires exactly one refresh control with its reviewed accessible-name pattern, exactly one `Xem điều kiện` analysis control with its dedicated selector, exactly two total controls, and no other button outside that whitelist. This preserves the no-unreviewed-action check rather than disabling it. No application implementation or authorization rule was changed for this correction.
+
+After correction, `python3 docs/quality/sources_browser_smoke.py` passed again in real Chromium, **2.713 seconds**, including the prior inert-content, error/cache, freshness and mobile assertions. No injected external request or JavaScript error occurred. The original 50-test M3 evidence above remains historical; M5's latest API totals are recorded in ANALYSIS-QA.md and the root integration record.
+
 ## Limits and remaining gates
 
 A mocked official document is not evidence of current provider content, eligibility, reward availability or automation permission. Retrieved content is raw Markdown with unresolved templates and bounded excerpts; no semantic fact extraction or legitimacy decision is implemented. General arbitrary-source ingestion and SSRF/private-network defenses remain future work; this increment admits only one reviewed URL and rejects redirects.

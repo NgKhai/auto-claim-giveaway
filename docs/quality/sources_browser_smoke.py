@@ -4,6 +4,7 @@ Uses injected transport fixtures; never claims live-provider validation.
 """
 import hashlib
 import os
+import re
 from pathlib import Path
 import socket
 import sqlite3
@@ -69,7 +70,15 @@ uvicorn.run(app,host='127.0.0.1',port=int(sys.argv[3]),log_level='error')
             assert card.locator('script, img').count() == 0
             assert not page.evaluate('Boolean(window.SOURCE_EXECUTED)')
             assert external == [], external
-            assert card.get_by_role('button').count() == 1, 'External registration control appeared'
+            # M5 adds a legitimate read-only analysis control. Whitelist the
+            # two reviewed controls rather than treating every new button as registration.
+            expect(card.locator('[data-source-refresh="github-education"]')).to_have_count(1)
+            expect(button).to_have_accessible_name(re.compile(r'^(Đọc nguồn chính thức|Đọc lại nguồn chính thức|Thử lại sau \d+ giây)$'))
+            analysis_button = card.locator('[data-source-analysis="github-education"]')
+            expect(analysis_button).to_have_count(1)
+            expect(analysis_button).to_have_accessible_name('Xem điều kiện')
+            expect(card.get_by_role('button')).to_have_count(2)
+            assert card.locator('button:not([data-source-refresh]):not([data-source-analysis])').count() == 0, 'Unreviewed source action control appeared'
             first = page.request.get(origin + '/api/sources').json()[0]['evidence']
             with sqlite3.connect(db_path) as connection:
                 connection.execute('UPDATE source_records SET last_attempt_at=0')

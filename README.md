@@ -51,3 +51,7 @@ Không nhận URL tùy ý: chỉ registry do code định nghĩa mới được 
 ## Cấu hình trước khi public
 
 Chế độ production yêu cầu khai báo host/origin HTTPS, cookie Secure và đường dẫn database tuyệt đối; thiếu cấu hình ứng dụng sẽ từ chối khởi động. Xem [cấu hình và giới hạn](docs/product/DEPLOYMENT-GUARDS.md) và [vận hành](docs/OPERATIONS.md). Chưa có bằng chứng triển khai production hoặc HTTPS/backup thực tế từ các kiểm thử cục bộ.
+
+## Checklist điều kiện có trích dẫn (SRC-01b)
+
+Trong tab **Nguồn**, chọn **Xem điều kiện** sau khi tải tài liệu. Parser xác định chỉ nhận diện một số mẫu câu GitHub Education đã kiểm thử; từng điều kiện là ứng viên cần người dùng đối chiếu, kèm trích dẫn nguyên văn, hash và thời điểm của bằng chứng. Không có kết luận đủ điều kiện hoặc quyền tự đăng ký. Bằng chứng cũ, lần tải lỗi, excerpt bị cắt hoặc câu không hỗ trợ giữ trạng thái chưa rõ/cần tải lại. Không có lời gọi LLM trong chức năng này. Xem [phạm vi phân tích](docs/product/ANALYSIS.md).

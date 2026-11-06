@@ -1,10 +1,12 @@
 # Shared delivery progress
 
-Updated 2026-11-05. Full product remains incomplete and is not production-ready.
+Updated 2026-11-07. Full product remains incomplete and is not production-ready.
 
 ## Current milestone
 
-M4 AUTH-01b deployment configuration guards are in progress: explicit fail-closed production host/origin/database/cookie settings and HSTS, preserving development defaults. Design/implementation and independent verification remain pending; no deployment, final test count or release readiness is asserted. The lead owns the deployment-guards design and final evidence.
+M5 SRC-01b cited deterministic qualification checklist is specified in [ANALYSIS.md](ANALYSIS.md); implementation and independent acceptance are pending. Scope: owner-local retained evidence, curated qualification patterns, exact source quotes/spans and conservative unknown states. No network/model call, verified eligibility or automation permission is added.
+
+M4 AUTH-01b deployment configuration guards are locally implemented, independently accepted and pushed as `0230b95`; see its final integration evidence below. Production host/origin/database/cookie settings and HSTS guards do not establish verified hosting, identity or production readiness.
 
 M3 SRC-01a fixed-source documentation retrieval is implemented and independently accepted in its scoped read-only workflow, commit `8528567`. The fixed registry entry is owner-scoped and separate from executable sandbox opportunities. Source eligibility/deadline/automation permission remain unknown. Owner export/deletion includes source records. Full general discovery, semantic extraction and arbitrary-source network safety remain unfinished.
 
@@ -17,7 +19,7 @@ M1 local sandbox journey and M2 local privacy increment implemented; M1 accepted
 | Frontend | Verified browser journey | Real Chromium signup → goal → exact consent → sandbox receipt → reload → mobile → logout |
 | Independent QA | Local slice accepted; production rejected | ../quality/RELEASE-REVIEW.md |
 | Independent code review | See reviewer verdict | ../quality/CODE-REVIEW.md |
-| Integration | M1–M3 scoped increments accepted; M4 configuration guards in progress | CI configured; remote CI not yet observed |
+| Integration | M1–M4 scoped increments accepted; M5 candidate checklist in progress | CI configured; remote CI not yet observed |
 
 ## Verified evidence
 
@@ -75,3 +77,13 @@ AUTH-01b production settings guards implemented and accepted for the local scope
 Root full suite:65/65 passed,7.366s. Both Chromium regressions passed with no JS errors. Separate container build with TLS verification and temporary CA mount succeeded; rebuilt non-root image passed65/65 tests,8.695s, and real HTTP health/root/static200. Initial COPY ownership failure was diagnosed and fixed. QA real Uvicorn production invocation showed internal HTTP health200, plaintext+spoofed-XFP signup400 and zero created users. See ../quality/DEPLOYMENT-QA.md, ../quality/DEPLOYMENT-CODE-REVIEW.md and OPERATIONS.md for actual boundaries.
 
 M4 functional commit `0230b95` (`feat(security): enforce validated production deployment settings`) pushed successfully to origin/work. M3 `8528567` was also pushed successfully. Startup instructions were saved to the environment draft with --no-proxy-headers; saving is not publication. No high defect remains in the reviewed local slice; production release still unaccepted. Remaining work includes verified identity/password recovery/abuse controls, general source ingestion and normalization, AI/semantic relevance, reviewed provider adapters, durable monitoring/notifications and real deployment/backup/rollback/load/security validation. Credentials/hosting are not the only gaps: these software capabilities remain unfinished.
+
+## M5 verified integration — 2026-11-07
+
+Implemented a source-owner-only, read-only analysis endpoint and on-demand Sources checklist. Versioned curated parser returns four candidate requirements with exact Unicode code-point quote spans, content hash, URL and retrieval time. Unsupported, incomplete, duplicate, conflicting, stale, failed or truncated evidence yields no candidate checklist. Conservative Markdown/HTML/Liquid context handling prevents examples/comments from becoming facts. This is not LLM/semantic extraction, verified user eligibility or automation permission. Derived analysis is included in account export without new stored personal data.
+
+Lead final suite:78/78 passed8.678s; rebuilt non-root image e21ef4ef5c2588916d030fdd14b24afa54d18e505a8f8390d9b9903483ef2a6c passed78/78 in9.333s. All three Chromium scripts passed: baseline account/sandbox/privacy; Sources; checklist provenance/inert hostile data/open-page24h expiry/delayed prior-owner response isolation. Node syntax, Python compile and whitespace checks passed. The old Sources smoke's one-button assertion failed after addition of the legitimate analysis button; QA replaced it with an explicit two-read-only-control whitelist and reran successfully, retaining the no-registration boundary.
+
+Separate actual HTTPS API check returned200 and four candidates from the fixed GitHub Education doc; all quote slices matched stored excerpt and hash880671771eee701e5cff33ff4c8ba409c306e38039ea8a1bb6b9e5a9856db17a. Eligibility and automation remained unknown. No external registration, model call or notification was sent. QA and code review reports: ../quality/ANALYSIS-QA.md and ../quality/ANALYSIS-CODE-REVIEW.md. No unresolved high finding in this bounded slice. Functional commit/push pending creation.
+
+Next: generalize discovery/relevance with evaluated source and field contracts, implement configured AI with grounded evaluation and honest unavailable fallback, then reviewed provider handoff/adapters and durable monitoring/notifications. Hosted authentication, transitive dependency locks and real deployment/backup/rollback/load/security validation also remain unfinished. Remote CI and production readiness remain unverified; local candidate extraction is not full AI-01 completion.
