@@ -16,7 +16,7 @@ Yêu cầu Python 3.12+. Trong thư mục repository:
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m uvicorn hunter.app:app --host 127.0.0.1 --port 8000
+python -m uvicorn hunter.app:app --no-proxy-headers --host 127.0.0.1 --port 8000
 ```
 
 Mở ứng dụng bằng trình duyệt trong môi trường phát triển. Đăng ký tài khoản riêng với mật khẩu ít nhất 12 ký tự; không có tài khoản mặc định hoặc mật khẩu mẫu. Chọn quốc gia VN, tạo mục tiêu bằng từ khóa trong cơ hội mẫu và xem lý do policy trước khi duyệt. Chỉ sandbox có thể được submit.
@@ -47,3 +47,7 @@ Tab **Nguồn** đọc một tài liệu GitHub Education cố định qua HTTPS
 Mỗi tài khoản có bằng chứng riêng, cooldown 60 giây và trạng thái tuổi dữ liệu 24 giờ. Lỗi tải không xóa bằng chứng thành công trước đó. Nguồn này chưa xác nhận eligibility, deadline hay quyền automation và không có nút đăng ký thật. Danh mục cơ hội và executor cũ vẫn là sandbox.
 
 Không nhận URL tùy ý: chỉ registry do code định nghĩa mới được truy cập, không theo redirect. Xem [hợp đồng nguồn](docs/product/SOURCES.md). Các test dùng transport giả lập có kiểm soát; kiểm chứng HTTPS thật được ghi riêng trong tiến độ.
+
+## Cấu hình trước khi public
+
+Chế độ production yêu cầu khai báo host/origin HTTPS, cookie Secure và đường dẫn database tuyệt đối; thiếu cấu hình ứng dụng sẽ từ chối khởi động. Xem [cấu hình và giới hạn](docs/product/DEPLOYMENT-GUARDS.md) và [vận hành](docs/OPERATIONS.md). Chưa có bằng chứng triển khai production hoặc HTTPS/backup thực tế từ các kiểm thử cục bộ.

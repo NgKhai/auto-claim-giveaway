@@ -4,7 +4,9 @@ Updated 2026-11-05. Full product remains incomplete and is not production-ready.
 
 ## Current milestone
 
-M3 SRC-01a fixed-source documentation retrieval is specified in [SOURCES.md](SOURCES.md); implementation and independent verification are pending. The fixed registry entry is read-only, owner-scoped and separate from executable sandbox opportunities. Source eligibility/deadline/automation permission remain unknown. Source records must be included in owner export/deletion. Full general discovery, semantic extraction and arbitrary-source network safety remain unfinished.
+M4 AUTH-01b deployment configuration guards are in progress: explicit fail-closed production host/origin/database/cookie settings and HSTS, preserving development defaults. Design/implementation and independent verification remain pending; no deployment, final test count or release readiness is asserted. The lead owns the deployment-guards design and final evidence.
+
+M3 SRC-01a fixed-source documentation retrieval is implemented and independently accepted in its scoped read-only workflow, commit `8528567`. The fixed registry entry is owner-scoped and separate from executable sandbox opportunities. Source eligibility/deadline/automation permission remain unknown. Owner export/deletion includes source records. Full general discovery, semantic extraction and arbitrary-source network safety remain unfinished.
 
 M1 local sandbox journey and M2 local privacy increment implemented; M1 accepted by independent QA for its tested scope. PM/BA's two conditional UI findings (exact-action consent and Unix audit time rendering) are resolved and explicitly verified in Chromium. Existing research files remain unchanged.
 
@@ -15,7 +17,7 @@ M1 local sandbox journey and M2 local privacy increment implemented; M1 accepted
 | Frontend | Verified browser journey | Real Chromium signup → goal → exact consent → sandbox receipt → reload → mobile → logout |
 | Independent QA | Local slice accepted; production rejected | ../quality/RELEASE-REVIEW.md |
 | Independent code review | See reviewer verdict | ../quality/CODE-REVIEW.md |
-| Integration | Commit and push pending final record below | CI configured; remote CI not yet observed |
+| Integration | M1–M3 scoped increments accepted; M4 configuration guards in progress | CI configured; remote CI not yet observed |
 
 ## Verified evidence
 
@@ -64,4 +66,12 @@ Lead final regression: 50/50 tests passed in 7.037 seconds; JavaScript syntax, P
 
 Separate real-network check: authenticated API refresh over actual HTTPS returned 200 from the fixed official raw GitHub doc; hash `880671771eee701e5cff33ff4c8ba409c306e38039ea8a1bb6b9e5a9856db17a`, excerpt 3602 characters, fresh; immediate repeat 429, export contains one source. Eligibility/deadline/automation remain unknown. No account/provider registration or notification was sent. Document content may change after this check.
 
-Evidence: quality/SOURCES-QA.md and quality/SOURCES-CODE-REVIEW.md. Functional commit/push pending final creation. General live-source discovery, semantic/AI extraction, external adapters, monitoring, notifications and production operations remain incomplete.
+Evidence: [source QA](../quality/SOURCES-QA.md) and [source code review](../quality/SOURCES-CODE-REVIEW.md). Functional commit `8528567` (`feat(sources): retrieve bounded official documentation evidence`) accepted by the lead; push to origin/work succeeded and was observed by the lead. General live-source discovery, semantic/AI extraction, external adapters, monitoring, notifications and production operations remain incomplete.
+
+## M4 verified integration — 2026-11-06
+
+AUTH-01b production settings guards implemented and accepted for the local scope by independent QA/code review. Explicit exact hosts/origins, absolute data path and Secure cookie are required; production plaintext routes are denied except health. Malformed authorities, duplicate/empty Origin and forged forwarding headers are tested. Shipped Docker CMD uses --no-proxy-headers; real trusted HTTPS termination is not verified.
+
+Root full suite:65/65 passed,7.366s. Both Chromium regressions passed with no JS errors. Separate container build with TLS verification and temporary CA mount succeeded; rebuilt non-root image passed65/65 tests,8.695s, and real HTTP health/root/static200. Initial COPY ownership failure was diagnosed and fixed. QA real Uvicorn production invocation showed internal HTTP health200, plaintext+spoofed-XFP signup400 and zero created users. See ../quality/DEPLOYMENT-QA.md, ../quality/DEPLOYMENT-CODE-REVIEW.md and OPERATIONS.md for actual boundaries.
+
+M4 functional commit/push pending creation. No high defect remains in the reviewed local slice; production release still unaccepted. Remaining work includes verified identity/password recovery/abuse controls, general source ingestion and normalization, AI/semantic relevance, reviewed provider adapters, durable monitoring/notifications and real deployment/backup/rollback/load/security validation. Credentials/hosting are not the only gaps: these software capabilities remain unfinished.

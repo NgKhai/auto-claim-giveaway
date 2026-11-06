@@ -1,6 +1,6 @@
 # SRC-01a: fixed official documentation source
 
-Status: specified, implementation and independent verification pending. This M3 increment adds read-only retrieval of one official document. It does not complete general discovery, semantic search, source verification or external registration.
+Status: locally implemented, independently accepted and committed as `8528567`; see [QA evidence](../quality/SOURCES-QA.md), [code review](../quality/SOURCES-CODE-REVIEW.md) and [integration record](PROGRESS.md). QA and lead report 50-test regression and actual Chromium acceptance; a separate lead HTTPS check retrieved the fixed upstream document. This M3 increment adds read-only retrieval of one official document. It does not complete general discovery, semantic search, source verification or external registration.
 
 ## Registry and workflow
 
@@ -54,4 +54,4 @@ Own-data export includes the owner's source records, including retained excerpt/
 | SRC-A11 | Browser Sources tab and error state | Human-readable source/evidence/status/unknown fields; no external-submit control |
 | SRC-A12 | Existing auth/privacy/sandbox regression | Existing boundaries and receipt behavior remain intact |
 
-Use injected fetch responses for deterministic failure/size/timeout tests; report the live HTTP read separately. A mocked response is not a live provider integration. Record actual QA results and review disposition before acceptance; no test outcome is asserted by this specification.
+Use injected fetch responses for deterministic failure/size/timeout tests; report the live HTTP read separately. A mocked response is not a live provider integration. The linked QA and integration reports record actual executed outcomes; this acceptance matrix defines the retained requirements for regression.

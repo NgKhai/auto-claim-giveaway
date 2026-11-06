@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from hunter.config import Settings, ConfigurationError, ExactTrustedHostMiddleware, normalize_origin
 from hunter.sources import REGISTRY, COOLDOWN_SECONDS, SourceFailure, fetch_source, source_view
 
 class Credentials(BaseModel):
@@ -61,8 +62,11 @@ def policy(o,country):
     if set(o['required_fields'])-{'email'}: return 'Sensitive fields exceed permitted email scope.'
     return ''
 
-def create_app(db_path=None, source_transport=None):
-    path=Path(db_path or os.environ.get('HUNTER_DB_PATH',str(Path(__file__).resolve().parent.parent/'.data/hunter.sqlite3')))
+def create_app(db_path=None, source_transport=None, settings=None):
+    settings=settings or Settings.from_env()
+    if settings.environment=='production' and db_path is not None and not Path(db_path).is_absolute():
+        raise ConfigurationError('Production database override must be absolute')
+    path=Path(db_path or settings.db_path or str(Path(__file__).resolve().parent.parent/'.data/hunter.sqlite3'))
     path.parent.mkdir(parents=True,exist_ok=True)
     app=FastAPI(title='Opportunity Hunter — sandbox')
     @contextmanager
@@ -106,21 +110,30 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
     def session(c,u,r):
         token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32)
         c.execute('INSERT INTO sessions VALUES(?,?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),u['id'],csrf,time.time()+43200))
-        r.set_cookie('hunter_session',token,httponly=True,samesite='strict',secure=os.environ.get('HUNTER_SECURE_COOKIE','0')=='1',max_age=43200,path='/')
+        r.set_cookie('hunter_session',token,httponly=True,samesite='strict',secure=settings.secure_cookie,max_age=43200,path='/')
         return public(u,csrf)
     def pw(password,salt=None):
         salt=salt or secrets.token_hex(16)
         return salt+':'+hashlib.pbkdf2_hmac('sha256',password.encode(),salt.encode(),310000).hex()
     @app.middleware('http')
     async def headers(req,call_next):
+        if settings.environment=='production' and req.url.scheme!='https' and req.url.path!='/api/health':
+            return Response(content='HTTPS required',status_code=400)
         if req.method in {'POST','PUT','PATCH','DELETE'}:
-            origin=req.headers.get('origin')
-            if origin and origin != str(req.base_url).rstrip('/'):
-                return Response(content='Cross-origin request denied',status_code=403)
+            origins=req.headers.getlist('origin')
+            if len(origins)>1: return Response(content='Ambiguous Origin denied',status_code=403)
+            origin=origins[0] if origins else None
+            if origins:
+                if settings.environment=='production':
+                    try: trusted=normalize_origin(origin) in settings.trusted_origins
+                    except ConfigurationError: trusted=False
+                else: trusted=origin == str(req.base_url).rstrip('/')
+                if not trusted: return Response(content='Cross-origin request denied',status_code=403)
             if req.headers.get('sec-fetch-site')=='cross-site':
                 return Response(content='Cross-site request denied',status_code=403)
         r=await call_next(req)
         r.headers.update({'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+        if settings.environment=='production': r.headers['Strict-Transport-Security']='max-age=31536000'
         if req.url.path.startswith('/api/'): r.headers['Cache-Control']='no-store'
         return r
     @app.get('/api/health')
@@ -329,6 +342,7 @@ CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,attempts INTEGER NO
         app.mount('/static',StaticFiles(directory=web),name='static')
         @app.get('/')
         def index(): return FileResponse(web/'index.html')
+    app.add_middleware(ExactTrustedHostMiddleware,allowed_hosts=settings.allowed_hosts,www_redirect=False)
     return app
 
 app=create_app()
